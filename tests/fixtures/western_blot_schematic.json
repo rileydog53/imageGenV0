@@ -1,0 +1,18 @@
+{
+  "archetype": "workflow",
+  "title": "Western blot schematic",
+  "entities": [
+    {"id": "sample", "type": "sample", "label": "Lysate"},
+    {"id": "gel", "type": "equipment", "label": "SDS-PAGE gel"},
+    {"id": "ladder", "type": "equipment", "label": "Mr ladder"},
+    {"id": "membrane", "type": "equipment", "label": "Nitrocellulose"}
+  ],
+  "relations": [
+    {"source": "sample", "target": "gel", "type": "generic", "label": "load"},
+    {"source": "ladder", "target": "gel", "type": "generic", "label": "load"},
+    {"source": "gel", "target": "membrane", "type": "generic", "label": "transfer"}
+  ],
+  "annotations": [
+    {"type": "caption", "text": "Illustrative — not real data", "position": "bottom"}
+  ]
+}

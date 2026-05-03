@@ -1,0 +1,29 @@
+{
+  "archetype": "reaction_scheme",
+  "title": "Esterification",
+  "style_preset": "acs",
+  "entities": [
+    {"id": "acid", "type": "metabolite", "label": "Acetic acid"},
+    {"id": "alcohol", "type": "metabolite", "label": "Ethanol"},
+    {"id": "ester", "type": "metabolite", "label": "Ethyl acetate"}
+  ],
+  "relations": [
+    {
+      "source": "acid",
+      "target": "ester",
+      "type": "generic",
+      "label": "esterification",
+      "conditions": {
+        "reagents": ["H2SO4 (cat.)"],
+        "yield_pct": 78.0,
+        "reversible": true,
+        "notes": "reflux, 80°C"
+      }
+    },
+    {
+      "source": "alcohol",
+      "target": "ester",
+      "type": "generic"
+    }
+  ]
+}

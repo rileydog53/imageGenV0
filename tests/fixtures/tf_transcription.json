@@ -1,0 +1,17 @@
+{
+  "archetype": "pathway",
+  "title": "TF nuclear translocation and transcription",
+  "compartments": [
+    {"id": "cyto", "type": "cytoplasm", "label": "Cytoplasm"},
+    {"id": "nuc", "type": "nucleus", "label": "Nucleus"}
+  ],
+  "entities": [
+    {"id": "tf_cyto", "type": "protein", "label": "TF", "location": "cyto"},
+    {"id": "tf_nuc", "type": "protein", "label": "TF", "location": "nuc"},
+    {"id": "gene", "type": "gene", "label": "Target gene", "location": "nuc"}
+  ],
+  "relations": [
+    {"source": "tf_cyto", "target": "tf_nuc", "type": "translocates", "label": "import"},
+    {"source": "tf_nuc", "target": "gene", "type": "transcribes"}
+  ]
+}

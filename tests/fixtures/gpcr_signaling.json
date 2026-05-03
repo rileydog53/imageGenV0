@@ -1,0 +1,18 @@
+{
+  "archetype": "pathway",
+  "title": "GPCR signaling",
+  "compartments": [
+    {"id": "ext", "type": "extracellular", "label": "Extracellular"},
+    {"id": "mem", "type": "membrane", "label": "Plasma membrane"},
+    {"id": "cyto", "type": "cytoplasm", "label": "Cytoplasm"}
+  ],
+  "entities": [
+    {"id": "ligand", "type": "ligand", "label": "Ligand", "location": "ext"},
+    {"id": "gpcr", "type": "receptor", "label": "GPCR", "location": "mem"},
+    {"id": "g_alpha", "type": "protein", "label": "Gα", "location": "cyto"}
+  ],
+  "relations": [
+    {"source": "ligand", "target": "gpcr", "type": "binds"},
+    {"source": "gpcr", "target": "g_alpha", "type": "activates"}
+  ]
+}

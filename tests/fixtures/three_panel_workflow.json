@@ -1,0 +1,51 @@
+{
+  "archetype": "workflow",
+  "title": "Three-step experimental workflow",
+  "panels": [
+    {
+      "id": "p1",
+      "title": "Step 1: Treat",
+      "grid": [0, 0, 1, 1],
+      "content": {
+        "archetype": "workflow",
+        "entities": [
+          {"id": "cells", "type": "sample", "label": "Cells"},
+          {"id": "drug", "type": "ligand", "label": "Compound"}
+        ],
+        "relations": [
+          {"source": "drug", "target": "cells", "type": "generic", "label": "treat"}
+        ]
+      }
+    },
+    {
+      "id": "p2",
+      "title": "Step 2: Lyse",
+      "grid": [0, 1, 1, 1],
+      "content": {
+        "archetype": "workflow",
+        "entities": [
+          {"id": "treated_cells", "type": "sample", "label": "Treated cells"},
+          {"id": "lysate", "type": "sample", "label": "Lysate"}
+        ],
+        "relations": [
+          {"source": "treated_cells", "target": "lysate", "type": "generic", "label": "lyse"}
+        ]
+      }
+    },
+    {
+      "id": "p3",
+      "title": "Step 3: Blot",
+      "grid": [0, 2, 1, 1],
+      "content": {
+        "archetype": "workflow",
+        "entities": [
+          {"id": "lysate2", "type": "sample", "label": "Lysate"},
+          {"id": "blot", "type": "equipment", "label": "Western blot"}
+        ],
+        "relations": [
+          {"source": "lysate2", "target": "blot", "type": "generic"}
+        ]
+      }
+    }
+  ]
+}

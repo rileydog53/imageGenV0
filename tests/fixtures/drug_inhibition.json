@@ -1,0 +1,14 @@
+{
+  "archetype": "pathway",
+  "title": "Kinase inhibition",
+  "caption": "Small-molecule inhibitor blocks kinase activity.",
+  "entities": [
+    {"id": "drug", "type": "ligand", "label": "Inhibitor"},
+    {"id": "kin", "type": "kinase", "label": "Target Kinase"},
+    {"id": "sub", "type": "protein", "label": "Substrate"}
+  ],
+  "relations": [
+    {"source": "drug", "target": "kin", "type": "inhibits"},
+    {"source": "kin", "target": "sub", "type": "phosphorylates"}
+  ]
+}

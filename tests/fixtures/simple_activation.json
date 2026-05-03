@@ -1,0 +1,11 @@
+{
+  "archetype": "pathway",
+  "title": "Simple activation",
+  "entities": [
+    {"id": "a", "type": "protein", "label": "Protein A"},
+    {"id": "b", "type": "protein", "label": "Protein B"}
+  ],
+  "relations": [
+    {"source": "a", "target": "b", "type": "activates"}
+  ]
+}

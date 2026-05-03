@@ -1,0 +1,75 @@
+{
+  "archetype": "workflow",
+  "title": "How mRNA vaccines train the immune system",
+  "caption": "Schematic graphical abstract.",
+  "panels": [
+    {
+      "id": "panel_a",
+      "title": "A. Vaccine delivery",
+      "grid": [0, 0, 1, 1],
+      "content": {
+        "archetype": "cellular_schematic",
+        "compartments": [
+          {"id": "ext", "type": "extracellular", "label": "Extracellular"},
+          {"id": "mem", "type": "membrane", "label": "Cell membrane"},
+          {"id": "cyto", "type": "cytoplasm", "label": "Cytoplasm"}
+        ],
+        "entities": [
+          {"id": "lnp", "type": "ligand", "label": "LNP·mRNA", "location": "ext"},
+          {"id": "mrna", "type": "gene", "label": "mRNA", "location": "cyto"}
+        ],
+        "relations": [
+          {"source": "lnp", "target": "mrna", "type": "translocates", "label": "endocytosis + release"}
+        ],
+        "annotations": [
+          {"type": "label", "text": "Lipid nanoparticle delivers mRNA", "position": "top"}
+        ]
+      }
+    },
+    {
+      "id": "panel_b",
+      "title": "B. Antigen presentation",
+      "grid": [0, 1, 1, 1],
+      "content": {
+        "archetype": "cellular_schematic",
+        "compartments": [
+          {"id": "cyto2", "type": "cytoplasm", "label": "Cytoplasm"},
+          {"id": "mem2", "type": "membrane", "label": "Cell surface"}
+        ],
+        "entities": [
+          {"id": "antigen", "type": "protein", "label": "Spike antigen", "location": "cyto2"},
+          {"id": "mhc", "type": "protein", "label": "MHC-I", "location": "mem2"}
+        ],
+        "relations": [
+          {"source": "antigen", "target": "mhc", "type": "binds", "label": "loaded on MHC"}
+        ],
+        "annotations": [
+          {"type": "label", "text": "APC presents antigen", "position": "top"}
+        ]
+      }
+    },
+    {
+      "id": "panel_c",
+      "title": "C. T-cell response",
+      "grid": [0, 2, 1, 1],
+      "content": {
+        "archetype": "pathway",
+        "entities": [
+          {"id": "apc", "type": "cell", "label": "APC"},
+          {"id": "tcell", "type": "cell", "label": "CD8⁺ T cell"},
+          {"id": "killing", "type": "generic", "label": "Cytotoxic response"}
+        ],
+        "relations": [
+          {"source": "apc", "target": "tcell", "type": "activates", "label": "TCR engagement"},
+          {"source": "tcell", "target": "killing", "type": "activates"}
+        ],
+        "annotations": [
+          {"type": "label", "text": "Trained T cells target infected cells", "position": "bottom"}
+        ]
+      }
+    }
+  ],
+  "annotations": [
+    {"type": "caption", "text": "Illustrative — not real data", "position": "bottom"}
+  ]
+}

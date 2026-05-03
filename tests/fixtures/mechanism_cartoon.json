@@ -1,0 +1,20 @@
+{
+  "archetype": "mechanism_cartoon",
+  "title": "SN2 mechanism cartoon",
+  "style_preset": "acs",
+  "entities": [
+    {"id": "nuc", "type": "metabolite", "label": "Nu⁻"},
+    {"id": "substrate", "type": "metabolite", "label": "R–LG"},
+    {"id": "product", "type": "metabolite", "label": "Nu–R"},
+    {"id": "lg", "type": "metabolite", "label": "LG⁻"}
+  ],
+  "relations": [
+    {"source": "nuc", "target": "substrate", "type": "binds", "label": "backside attack"},
+    {"source": "substrate", "target": "product", "type": "generic"},
+    {"source": "substrate", "target": "lg", "type": "generic", "label": "leaves"}
+  ],
+  "annotations": [
+    {"type": "label", "text": "concerted, single TS", "position": "top"},
+    {"type": "label", "text": "inversion of stereochemistry", "position": "bottom-right"}
+  ]
+}

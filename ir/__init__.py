@@ -1,0 +1,31 @@
+from ir.schema import (
+    Annotation,
+    AnnotationType,
+    Archetype,
+    Compartment,
+    CompartmentType,
+    Entity,
+    EntityType,
+    Figure,
+    NamedSlot,
+    Panel,
+    ReactionConditions,
+    Relation,
+    RelationType,
+)
+
+__all__ = [
+    "Annotation",
+    "AnnotationType",
+    "Archetype",
+    "Compartment",
+    "CompartmentType",
+    "Entity",
+    "EntityType",
+    "Figure",
+    "NamedSlot",
+    "Panel",
+    "ReactionConditions",
+    "Relation",
+    "RelationType",
+]

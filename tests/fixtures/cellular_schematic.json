@@ -1,0 +1,19 @@
+{
+  "archetype": "cellular_schematic",
+  "title": "Eukaryotic cell overview",
+  "compartments": [
+    {"id": "ext", "type": "extracellular", "label": "Extracellular"},
+    {"id": "mem", "type": "membrane", "label": "Plasma membrane"},
+    {"id": "cyto", "type": "cytoplasm", "label": "Cytoplasm"},
+    {"id": "nuc", "type": "nucleus", "label": "Nucleus"},
+    {"id": "mito", "type": "mitochondrion", "label": "Mitochondrion"}
+  ],
+  "entities": [
+    {"id": "receptor", "type": "receptor", "label": "Receptor", "location": "mem"},
+    {"id": "atp_synth", "type": "protein", "label": "ATP synthase", "location": "mito"},
+    {"id": "polII", "type": "protein", "label": "Pol II", "location": "nuc"}
+  ],
+  "annotations": [
+    {"type": "label", "text": "Powerhouse", "position": [0.7, 0.55]}
+  ]
+}

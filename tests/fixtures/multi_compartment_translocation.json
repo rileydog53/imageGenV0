@@ -1,0 +1,19 @@
+{
+  "archetype": "pathway",
+  "title": "NF-κB nuclear translocation",
+  "compartments": [
+    {"id": "cyto", "type": "cytoplasm", "label": "Cytoplasm"},
+    {"id": "nuc", "type": "nucleus", "label": "Nucleus"}
+  ],
+  "entities": [
+    {"id": "ikb_nfkb", "type": "protein", "label": "IκB·NF-κB", "location": "cyto"},
+    {"id": "nfkb_free", "type": "protein", "label": "NF-κB", "location": "cyto"},
+    {"id": "nfkb_nuc", "type": "protein", "label": "NF-κB", "location": "nuc"},
+    {"id": "ikk", "type": "kinase", "label": "IKK", "location": "cyto"}
+  ],
+  "relations": [
+    {"source": "ikk", "target": "ikb_nfkb", "type": "phosphorylates", "label": "IκB"},
+    {"source": "ikb_nfkb", "target": "nfkb_free", "type": "generic", "label": "release"},
+    {"source": "nfkb_free", "target": "nfkb_nuc", "type": "translocates"}
+  ]
+}
