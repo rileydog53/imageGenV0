@@ -8,7 +8,7 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 |-------|-------------|-------|
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
-| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 In progress |
+| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 Step 1/7 done (`arrows.py` ✅), Step 2/7: `proteins.py` next |
 | 3 | Layout engines | ⬜ Pending |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
@@ -16,7 +16,7 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **47 green** (22 smoke + 25 IR). Phase 2 entry point: `primitives/arrows.py`.
+Current test count: **54 green** (22 smoke + 25 IR + 7 arrows). Phase 2 Step 2 next: `primitives/proteins.py`.
 
 ## Plan
 
