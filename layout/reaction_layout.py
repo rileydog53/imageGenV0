@@ -82,6 +82,10 @@ def _classify_entities(figure: Figure) -> tuple[list[str], list[str]]:
     Product = entity that is the target of any relation.
     Intermediates (both source and target -- multi-step reactions) raise
     NotImplementedError; those belong in pathway_layout.py.
+
+    Output preserves the entity declaration order from the IR: callers who
+    care about left-to-right ordering of reactants in the rendered figure
+    set it by ordering the entity list in the IR.
     """
     sources = {r.source for r in figure.relations}
     targets = {r.target for r in figure.relations}
@@ -92,9 +96,8 @@ def _classify_entities(figure: Figure) -> tuple[list[str], list[str]]:
             f"source and target) are not supported by reaction_layout; use "
             f"pathway_layout instead."
         )
-    declared_order = [e.id for e in figure.entities]
-    reactants = [eid for eid in declared_order if eid in sources]
-    products = [eid for eid in declared_order if eid in targets]
+    reactants = [e.id for e in figure.entities if e.id in sources]
+    products = [e.id for e in figure.entities if e.id in targets]
     return reactants, products
 
 
@@ -184,13 +187,18 @@ def layout_reaction(
     conditions = _extract_conditions(figure)
 
     params = {**DEFAULT_LAYOUT_PARAMS, **(layout_params or {})}
+    kwargs: dict[str, Any] = {
+        "conditions": conditions,
+        "molecule_size": params["reaction_molecule_size"],
+    }
+    # Only forward style_dict when the caller actually passed one — keeps
+    # LayoutEntry.kwargs minimal and the renderer doesn't have to special-case
+    # an explicit None.
+    if style_dict is not None:
+        kwargs["style_dict"] = style_dict
     return [LayoutEntry(
         primitive=render_reaction,
         args=(reactants_smiles, products_smiles),
-        kwargs={
-            "conditions": conditions,
-            "molecule_size": params["reaction_molecule_size"],
-            "style_dict": style_dict,
-        },
+        kwargs=kwargs,
         position=params["reaction_origin"],
     )]
