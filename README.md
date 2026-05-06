@@ -8,7 +8,7 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 |-------|-------------|-------|
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
-| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 Steps 1–4/7 done (`arrows.py` ✅, `proteins.py` ✅, `membranes.py` ✅, `nucleic_acids.py` ✅), Step 5/7: `cells.py` next |
+| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 Steps 1–5/7 done; Step 6 (`chemistry.py`) in flight |
 | 3 | Layout engines | ⬜ Pending |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
@@ -16,7 +16,7 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **90 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids). Phase 2 Step 5 next: `primitives/cells.py`.
+Current test count: **104 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells). Phase 2 Step 6 in flight: `primitives/chemistry.py` (RDKit-backed `render_molecule` / `render_reaction` / `render_functional_group`; molecules render with transparent background and optional `center=` anchor so a ligand Group can be overlaid on a `receptor()` for docking schematics).
 
 ## Plan
 
