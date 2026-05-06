@@ -8,15 +8,15 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 |-------|-------------|-------|
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
-| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 Steps 1–6/7 done; Step 7 (`lab_equipment.py`) in flight |
-| 3 | Layout engines | ⬜ Pending |
+| 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
+| 3 | Layout engines | 🔄 Step 1/4 next: `layout/reaction_layout.py` |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **127 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry). Phase 2 Step 7 in flight: `primitives/lab_equipment.py` (well_plate, tube, pipette, gel_lane, gel_full, microscope, mouse, human_figure, stick_figure_dog).
+Current test count: **156 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment). Phase 2 (primitive library) complete. Phase 3 Step 1 next: `layout/reaction_layout.py`.
 
 ## Plan
 
