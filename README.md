@@ -9,14 +9,14 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
-| 3 | Layout engines | 🔄 Step 1/4 next: `layout/reaction_layout.py` |
+| 3 | Layout engines | 🔄 Step 1/4 (`layout/reaction_layout.py`) in flight |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **156 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment). Phase 2 (primitive library) complete. Phase 3 Step 1 next: `layout/reaction_layout.py`.
+Current test count: **156 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment). Phase 2 (primitive library) complete. Phase 3 Step 1 in flight: `layout/reaction_layout.py` (IR `Figure` → list of `LayoutEntry(primitive, args, kwargs, position)` tuples; thin translation layer over `chemistry.render_reaction`).
 
 ## Plan
 
