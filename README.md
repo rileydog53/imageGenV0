@@ -8,7 +8,7 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 |-------|-------------|-------|
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
-| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 Steps 1–6/7 done (`arrows.py` ✅, `proteins.py` ✅, `membranes.py` ✅, `nucleic_acids.py` ✅, `cells.py` ✅, `chemistry.py` ✅); Step 7/7: `lab_equipment.py` next |
+| 2 | Primitive library (arrows → proteins → membranes → …) | 🔄 Steps 1–6/7 done; Step 7 (`lab_equipment.py`) in flight |
 | 3 | Layout engines | ⬜ Pending |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
@@ -16,7 +16,7 @@ Scientific figure generation skill — vector-first, IR-driven. Produces publica
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **127 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry). Phase 2 Step 7 next: `primitives/lab_equipment.py`.
+Current test count: **127 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry). Phase 2 Step 7 in flight: `primitives/lab_equipment.py` (well_plate, tube, pipette, gel_lane, gel_full, microscope, mouse, human_figure, stick_figure_dog).
 
 ## Plan
 
