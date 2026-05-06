@@ -65,10 +65,13 @@ DEFAULT_STYLE: dict = {
     "tf_stroke": "#8B3A3F",
     "tf_dbd_fill": "#8B3A3F",
 
-    # Labels (shared across all)
-    "label_font_family": "Arial",
+    # Labels (shared across all primitive modules — keep these values
+    # synchronized with arrows.py, membranes.py, nucleic_acids.py, cells.py,
+    # chemistry.py, lab_equipment.py so the Phase 4 master preset union
+    # produces a single coherent label style)
+    "label_font_family": "Helvetica, Arial, sans-serif",
     "label_font_size": 11,
-    "label_font_color": "#222222",
+    "label_font_color": "#1A1A1A",
 }
 
 

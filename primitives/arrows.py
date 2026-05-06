@@ -25,9 +25,13 @@ DEFAULT_STYLE: dict = {
     "arrow_head_size": 10,   # pixels; applied to both filled and open heads
     "t_bar_width": 12,       # total width of the T-bar used in inhibition arrows
     "dash_array": "6,4",     # stroke-dasharray for translocation dashes
-    "font_family": "Arial",
-    "font_size": 11,
-    "font_color": "#222222",
+    # Labels (shared across all primitive modules — keep these values
+    # synchronized with proteins.py, membranes.py, nucleic_acids.py, cells.py,
+    # chemistry.py, lab_equipment.py so the Phase 4 master preset union
+    # produces a single coherent label style)
+    "label_font_family": "Helvetica, Arial, sans-serif",
+    "label_font_size": 11,
+    "label_font_color": "#1A1A1A",
 }
 
 
@@ -330,9 +334,9 @@ def reaction_arrow(
     stroke = s["stroke"]
     sw = float(s["stroke_width"])
     hs = float(s["arrow_head_size"])
-    fs = float(s["font_size"])
-    ff = s["font_family"]
-    fc = s["font_color"]
+    fs = float(s["label_font_size"])
+    ff = s["label_font_family"]
+    fc = s["label_font_color"]
 
     shaft_start = (start[0] + dx * hs, start[1] + dy * hs) if reversible else start
     shaft_end = (end[0] - dx * hs, end[1] - dy * hs)
