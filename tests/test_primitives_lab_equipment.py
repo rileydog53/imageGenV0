@@ -10,7 +10,7 @@ import svgwrite.container
 
 from primitives.lab_equipment import (
     DEFAULT_STYLE,
-    _MICROSCOPE_BUILDERS,
+    _MICROSCOPE_STYLES,
     _TUBE_BUILDERS,
     gel_full,
     gel_lane,
@@ -48,9 +48,9 @@ def _render_to_png(
 
 def test_default_style_has_all_namespaced_keys():
     required = {
-        "lab_outline_stroke", "lab_outline_stroke_width", "lab_fill_neutral",
+        "lab_outline_stroke", "lab_outline_stroke_width",
         "well_radius", "well_gap", "well_stroke", "well_stroke_width",
-        "well_default_fill", "well_highlight_fill_default",
+        "well_default_fill",
         "plate_corner_radius", "plate_padding", "plate_outline_stroke",
         "plate_outline_stroke_width", "plate_fill",
         "tube_eppendorf_width", "tube_eppendorf_height",
@@ -169,7 +169,7 @@ def test_gel_full_with_ladder():
 # microscope
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("scope_style", sorted(_MICROSCOPE_BUILDERS))
+@pytest.mark.parametrize("scope_style", sorted(_MICROSCOPE_STYLES))
 @pytest.mark.parametrize("minimal", [True, False])
 def test_microscope_each_style(scope_style, minimal):
     g = microscope(style=scope_style, minimal=minimal)

@@ -51,14 +51,12 @@ DEFAULT_STYLE: dict[str, object] = {
     # Shared
     "lab_outline_stroke":            "#37474F",
     "lab_outline_stroke_width":       1.5,
-    "lab_fill_neutral":              "#ECEFF1",
     # Well plate
     "well_radius":                    4.0,
     "well_gap":                       2.0,
     "well_stroke":                   "#546E7A",
     "well_stroke_width":              0.8,
     "well_default_fill":             "#FFFFFF",
-    "well_highlight_fill_default":   "#42A5F5",
     "plate_corner_radius":            6.0,
     "plate_padding":                  10.0,
     "plate_outline_stroke":          "#37474F",
@@ -311,26 +309,7 @@ def _microscope_common(accent_color: str, minimal: bool, style: dict) -> svgwrit
     return g
 
 
-def _light_microscope(minimal: bool, style: dict) -> tuple[svgwrite.container.Group, tuple[float, float]]:
-    g = _microscope_common(str(style["microscope_accent_light"]), minimal, style)
-    return g, (float(style["microscope_body_w"]), float(style["microscope_body_h"]))
-
-
-def _fluorescence_microscope(minimal: bool, style: dict) -> tuple[svgwrite.container.Group, tuple[float, float]]:
-    g = _microscope_common(str(style["microscope_accent_fluorescence"]), minimal, style)
-    return g, (float(style["microscope_body_w"]), float(style["microscope_body_h"]))
-
-
-def _em_microscope(minimal: bool, style: dict) -> tuple[svgwrite.container.Group, tuple[float, float]]:
-    g = _microscope_common(str(style["microscope_accent_em"]), minimal, style)
-    return g, (float(style["microscope_body_w"]), float(style["microscope_body_h"]))
-
-
-_MICROSCOPE_BUILDERS: dict[str, Callable] = {
-    "light":        _light_microscope,
-    "fluorescence": _fluorescence_microscope,
-    "em":           _em_microscope,
-}
+_MICROSCOPE_STYLES: tuple[str, ...] = ("light", "fluorescence", "em")
 
 
 # ---------------------------------------------------------------------------
@@ -572,13 +551,13 @@ def microscope(
     Raises:
         ValueError: *style* is not a known microscope type.
     """
-    if style not in _MICROSCOPE_BUILDERS:
-        valid = ", ".join(sorted(_MICROSCOPE_BUILDERS))
+    if style not in _MICROSCOPE_STYLES:
+        valid = ", ".join(sorted(_MICROSCOPE_STYLES))
         raise ValueError(f"Unknown microscope style {style!r} (valid: {valid})")
     merged_style = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group(transform=f"translate({position[0]},{position[1]})")
-    body, _ = _MICROSCOPE_BUILDERS[style](minimal, merged_style)
-    g.add(body)
+    accent = str(merged_style[f"microscope_accent_{style}"])
+    g.add(_microscope_common(accent, minimal, merged_style))
     return g
 
 
