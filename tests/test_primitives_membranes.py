@@ -141,9 +141,9 @@ def test_nuclear_envelope_returns_group_and_curve():
 def test_style_override_does_not_crash():
     """Passing custom style keys must not crash any public function."""
     override = {"bilayer_head_fill": "#FF0000", "nuclear_pore_fill": "#00FF00"}
-    _, curve = cell_membrane_outline(style=override)
-    lipid_bilayer(curve, style=override)
-    nuclear_envelope(style=override)
+    _, curve = cell_membrane_outline(style_dict=override)
+    lipid_bilayer(curve, style_dict=override)
+    nuclear_envelope(style_dict=override)
 
 
 # ---------------------------------------------------------------------------

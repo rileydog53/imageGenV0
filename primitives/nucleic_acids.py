@@ -242,7 +242,7 @@ def dna_segment(
     double_helix: bool = True,
     supercoiled: bool = False,
     sequence: str | None = None,
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render a DNA segment as a sine-wave double (or single) helix.
 
@@ -263,12 +263,12 @@ def dna_segment(
         sequence: Optional sense-strand sequence (e.g. "ATGCATGC"). Each character is
                   assigned to one rung in order, cycling if shorter than the rung count.
                   Enables per-rung color coding and "A-T"/"G-C" labels centered on rungs.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         svgwrite.container.Group containing all strand and rung SVG elements.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     amplitude = float(s["dna_amplitude"])
     period = float(s["dna_period"])
     sample_rate = int(s["dna_sample_rate"])
@@ -365,7 +365,7 @@ def rna_segment(
     start: tuple[float, float],
     end: tuple[float, float],
     single_strand: bool = True,
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render an RNA segment as an orange sine wave.
 
@@ -379,12 +379,12 @@ def rna_segment(
         end: (x, y) end of the RNA segment axis.
         single_strand: True (default) renders one sine wave. False renders dsRNA
                        with alternating crossover z-order.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         svgwrite.container.Group containing all RNA strand elements.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     amplitude = float(s["rna_amplitude"])
     period = float(s["rna_period"])
     sample_rate = int(s["rna_sample_rate"])
@@ -430,7 +430,7 @@ def rna_segment(
 def chromatin(
     region: tuple[tuple[float, float], tuple[float, float]],
     condensation_level: float = 0.0,
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render a chromatin segment from beads-on-string to condensed fiber.
 
@@ -444,12 +444,12 @@ def chromatin(
     Args:
         region: ((x0, y0), (x1, y1)) defining the backbone axis start and end.
         condensation_level: Float in [0, 1]. 0 = extended, 1 = condensed. Clamped.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         svgwrite.container.Group containing backbone, fiber polygon, and bead elements.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     level = max(0.0, min(1.0, float(condensation_level)))
 
     (x0, y0), (x1, y1) = region

@@ -364,7 +364,7 @@ def _nucleus_group(
     directly.
     """
     radius = min(size[0], size[1]) / 2
-    grp, _ = nuclear_envelope(center=center, radius=radius, style=style)
+    grp, _ = nuclear_envelope(center=center, radius=radius, style_dict=style)
     return grp
 
 
@@ -384,7 +384,7 @@ _ORGANELLE_BUILDERS: dict = {
 def cell_outline(
     style_name: str = "generic",
     size: tuple[float, float] = (300.0, 300.0),
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> tuple[svgwrite.container.Group, MembraneCurve]:
     """Render a closed cell boundary in one of four biological styles.
 
@@ -398,13 +398,13 @@ def cell_outline(
                     2:1 width:height), 'epithelial' (tall narrow oval, ~1:2 ratio),
                     or 'immune' (round with 8 pseudopod spike projections).
         size: (width, height) bounding box in pixels. The outline fits within this box.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         (group, curve): SVG group containing the outline, and a MembraneCurve
         anchored to the outline path for membrane-protein placement.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     n = int(s["cell_sample_points"])
     w, h = size
     cx, cy = w / 2, h / 2
@@ -449,7 +449,7 @@ def organelle(
     type: str,
     position: tuple[float, float],
     size: tuple[float, float],
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render a single organelle of the given type at a given position and size.
 
@@ -461,7 +461,7 @@ def organelle(
               'nucleus'. Raises ValueError for unknown types.
         position: (cx, cy) centre of the organelle in SVG coordinates.
         size: (width, height) bounding box for the organelle in pixels.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE. Nucleus style
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE. Nucleus style
                uses nuclear_* keys from membranes.DEFAULT_STYLE, which pass through
                this dict transparently.
 
@@ -472,7 +472,7 @@ def organelle(
         known = "', '".join(_ORGANELLE_BUILDERS)
         raise ValueError(f"Unknown organelle type: {type!r}. Choose from: '{known}'.")
 
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     return _ORGANELLE_BUILDERS[type](position, size, s)
 
 
@@ -481,7 +481,7 @@ def compose_cell(
     organelles: list[tuple[str, tuple[float, float], tuple[float, float]]] | None = None,
     membrane_proteins: list[svgwrite.container.Group] | None = None,
     size: tuple[float, float] = (300.0, 300.0),
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Assemble a complete cell schematic from outline, organelles, and proteins.
 
@@ -497,18 +497,18 @@ def compose_cell(
         membrane_proteins: Pre-positioned protein Groups to add on top of the outline.
                            Pass None or [] for no membrane proteins.
         size: (width, height) canvas, forwarded to cell_outline().
-        style: Optional style-key overrides forwarded to all sub-calls.
+        style_dict: Optional style-key overrides forwarded to all sub-calls.
 
     Returns:
         svgwrite.container.Group containing the complete cell schematic.
     """
-    outline_group, _ = cell_outline(outline_style, size, style)
+    outline_group, _ = cell_outline(outline_style, size, style_dict)
 
     group = svgwrite.container.Group()
     group.add(outline_group)
 
     for organ_type, position, organ_size in (organelles or []):
-        group.add(organelle(organ_type, position, organ_size, style))
+        group.add(organelle(organ_type, position, organ_size, style_dict))
 
     for protein_group in (membrane_proteins or []):
         group.add(protein_group)

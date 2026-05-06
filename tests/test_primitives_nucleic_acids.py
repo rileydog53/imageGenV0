@@ -147,9 +147,9 @@ def test_style_override_does_not_crash():
         "chromatin_nucleosome_fill": "#0000FF",
         "dna_rung_at_fill":          "#FF6600",
     }
-    dna_segment((20.0, 100.0), (380.0, 100.0), style=override)
-    rna_segment((20.0, 100.0), (380.0, 100.0), style=override)
-    chromatin(((20.0, 100.0), (380.0, 100.0)), style=override)
+    dna_segment((20.0, 100.0), (380.0, 100.0), style_dict=override)
+    rna_segment((20.0, 100.0), (380.0, 100.0), style_dict=override)
+    chromatin(((20.0, 100.0), (380.0, 100.0)), style_dict=override)
 
 
 # ---------------------------------------------------------------------------

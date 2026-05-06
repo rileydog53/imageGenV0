@@ -6,7 +6,7 @@ All public functions accept a ``style`` dict; pass ``None`` to fall back to ``DE
 
 Phase 2 note: ``DEFAULT_STYLE`` provides fallback values for every parameter consumed here.
 When Phase 4 (style presets) lands, the compositor will forward a loaded preset dict instead.
-Callers that pass ``style=None`` will need to forward the active preset at that point.
+Callers that pass ``style_dict=None`` will need to forward the active preset at that point.
 """
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def activation_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
     curved: bool = False,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Activation arrow: solid line with a filled triangular head at *end*.
@@ -137,12 +137,12 @@ def activation_arrow(
         start:   tail position (x, y) in SVG coordinates
         end:     tip position (x, y) in SVG coordinates
         curved:  if True, shaft is a quadratic bezier; otherwise a straight line
-        style:   presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:   presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         svgwrite.container.Group containing shaft and filled arrowhead
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
@@ -177,7 +177,7 @@ def inhibition_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
     curved: bool = False,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Inhibition arrow: solid line with a T-bar terminus at *end*.
@@ -190,12 +190,12 @@ def inhibition_arrow(
         start:   tail position (x, y) in SVG coordinates
         end:     tip / T-bar position (x, y) in SVG coordinates
         curved:  if True, shaft is a quadratic bezier; otherwise a straight line
-        style:   presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:   presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         svgwrite.container.Group containing shaft and T-bar
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
@@ -228,7 +228,7 @@ def inhibition_arrow(
 def binding_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Binding arrow: bidirectional line with small filled heads at both ends.
@@ -239,12 +239,12 @@ def binding_arrow(
     Args:
         start:  one endpoint (x, y)
         end:    other endpoint (x, y)
-        style:  presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:  presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         svgwrite.container.Group containing shaft and two filled arrowheads
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
@@ -265,7 +265,7 @@ def binding_arrow(
 def translocation_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Translocation arrow: dashed line with an open (unfilled) triangular head at *end*.
@@ -276,12 +276,12 @@ def translocation_arrow(
     Args:
         start:  tail position (x, y)
         end:    tip position (x, y)
-        style:  presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:  presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         svgwrite.container.Group containing dashed shaft and open arrowhead
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
@@ -305,7 +305,7 @@ def reaction_arrow(
     reagents: Optional[str] = None,
     yield_pct: Optional[float] = None,
     reversible: bool = False,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Reaction arrow: solid line with optional text labels above and below the shaft.
@@ -323,12 +323,12 @@ def reaction_arrow(
         reagents:   reagent string above the shaft, stacked below conditions if both set
         yield_pct:  numeric yield rendered below the shaft as "X%"
         reversible: if True, adds a filled arrowhead at *start* pointing backward
-        style:      presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:      presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         svgwrite.container.Group containing shaft, head(s), and any text elements
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]

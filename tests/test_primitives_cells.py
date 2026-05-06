@@ -163,10 +163,10 @@ def test_style_override_does_not_crash():
         "organelle_mito_fill":    "#CCFFCC",
         "organelle_golgi_stroke": "#FF8800",
     }
-    cell_outline("generic", style=override)
-    organelle("mitochondrion", (100.0, 100.0), (60.0, 30.0), style=override)
-    organelle("golgi", (100.0, 100.0), (80.0, 60.0), style=override)
-    compose_cell("generic", style=override)
+    cell_outline("generic", style_dict=override)
+    organelle("mitochondrion", (100.0, 100.0), (60.0, 30.0), style_dict=override)
+    organelle("golgi", (100.0, 100.0), (80.0, 60.0), style_dict=override)
+    compose_cell("generic", style_dict=override)
 
 
 # ---------------------------------------------------------------------------

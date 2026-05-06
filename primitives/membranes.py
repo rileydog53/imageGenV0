@@ -293,7 +293,7 @@ def _polyline_to_svg_points(
 def cell_membrane_outline(
     shape: str = "circle",
     size: tuple[float, float] = (200.0, 200.0),
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> tuple[svgwrite.container.Group, MembraneCurve]:
     """Closed membrane outline representing a cell or vesicle boundary.
 
@@ -309,13 +309,13 @@ def cell_membrane_outline(
                organic-looking perturbed circle suitable for generic cell outlines.
         size: (width, height) bounding box. Radius is min(w, h) / 2. For 'irregular',
               perturbations stay within ~8% of that radius.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         (group, curve): SVG group containing the outline, and a MembraneCurve
         anchored to the outline path.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     w, h = size
     cx, cy = w / 2, h / 2
     r = min(w, h) / 2
@@ -341,7 +341,7 @@ def lipid_bilayer(
     curve: MembraneCurve,
     thickness: float | None = None,
     head_style: str = "circles",
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render a phospholipid bilayer along a MembraneCurve.
 
@@ -360,12 +360,12 @@ def lipid_bilayer(
                    in style if provided.
         head_style: 'circles' (default) -- filled circles for phospholipid heads.
                     Extend _place_heads() to add 'lollipop', 'wedge', etc.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         svgwrite.container.Group containing all bilayer SVG elements.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     half = (thickness if thickness is not None else float(s["bilayer_thickness"])) / 2.0
 
     # Positive offset = inward; negative = outward (see _parallel_offset docstring)
@@ -412,7 +412,7 @@ def lipid_bilayer(
 def nuclear_envelope(
     center: tuple[float, float] = (100.0, 100.0),
     radius: float = 80.0,
-    style: dict | None = None,
+    style_dict: dict | None = None,
 ) -> tuple[svgwrite.container.Group, MembraneCurve]:
     """Double nuclear membrane with evenly spaced nuclear pore complex accents.
 
@@ -428,12 +428,12 @@ def nuclear_envelope(
     Args:
         center: (cx, cy) centre of the nucleus in SVG coordinate frame.
         radius: Outer ring radius in pixels.
-        style: Optional style-key overrides merged onto DEFAULT_STYLE.
+        style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         (group, curve): SVG group and a MembraneCurve at the envelope midline.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     cx, cy = center
     gap = float(s["nuclear_gap"])
     inner_r = radius - gap

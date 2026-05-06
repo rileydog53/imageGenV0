@@ -123,7 +123,7 @@ def generic_protein(
     position: tuple[float, float],
     size: tuple[float, float] = (60, 30),
     color: Optional[str] = None,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Generic protein: rounded rectangle with centered label.
@@ -137,12 +137,12 @@ def generic_protein(
         position: (x, y) center of the rectangle
         size:     (width, height) of the rectangle
         color:    optional fill color override (defaults to ``style["protein_fill"]``)
-        style:    presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:    presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         ``svgwrite.container.Group`` containing the rectangle and label.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     cx, cy = position
     w, h = size
@@ -168,7 +168,7 @@ def kinase(
     size: tuple[float, float] = (70, 32),
     phosphorylated: bool = False,
     color: Optional[str] = None,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Kinase: hexagonal shape with optional phosphorylation 'P' badge.
@@ -184,12 +184,12 @@ def kinase(
         size:           (width, height) of the hexagon's bounding box
         phosphorylated: if True, render a 'P' badge in the upper-right
         color:          optional fill color override (defaults to ``style["kinase_fill"]``)
-        style:          presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:          presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         ``svgwrite.container.Group`` containing the hexagon, label, and optional P badge.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     cx, cy = position
     w, h = size
@@ -241,7 +241,7 @@ def receptor(
     orientation: float = 0.0,
     size: tuple[float, float] = (28, 60),
     color: Optional[str] = None,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Single-pass transmembrane receptor: asymmetric hourglass with widest point on the
@@ -262,12 +262,12 @@ def receptor(
         orientation: rotation in radians; 0 = horizontal membrane
         size:        (max width, total height); height runs across the membrane
         color:       optional fill color override (defaults to ``style["receptor_fill"]``)
-        style:       presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:       presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         ``svgwrite.container.Group`` containing the receptor body and label.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     cx, cy = position
     w, h = size
@@ -320,7 +320,7 @@ def gpcr(
     orientation: float = 0.0,
     size: tuple[float, float] = (90, 50),
     color: Optional[str] = None,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     G-protein coupled receptor: iconic seven-helix transmembrane bundle.
@@ -340,12 +340,12 @@ def gpcr(
         orientation: rotation in radians; 0 = horizontal membrane
         size:        (total bundle width, helix height)
         color:       optional helix fill color override
-        style:       presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:       presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         ``svgwrite.container.Group`` containing 7 helices, 6 loops, N/C termini, and label.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     cx, cy = position
     w, h = size
@@ -435,7 +435,7 @@ def transcription_factor(
     size: tuple[float, float] = (60, 30),
     dna_binding: bool = False,
     color: Optional[str] = None,
-    style: Optional[dict] = None,
+    style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
     Transcription factor: rounded rectangle with optional DNA-binding domain protrusion.
@@ -451,12 +451,12 @@ def transcription_factor(
         size:        (width, height) of the main body
         dna_binding: if True, render the DBD protrusion at the bottom
         color:       optional fill color override (defaults to ``style["tf_fill"]``)
-        style:       presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
+        style_dict:       presentation attrs dict; falls back to DEFAULT_STYLE for missing keys
 
     Returns:
         ``svgwrite.container.Group`` containing the body, label, and optional DBD.
     """
-    s = {**DEFAULT_STYLE, **(style or {})}
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
     cx, cy = position
     w, h = size
