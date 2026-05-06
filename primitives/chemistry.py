@@ -48,6 +48,9 @@ from __future__ import annotations
 import math
 import re
 import xml.etree.ElementTree as ET
+from typing import Literal
+
+MoleculeStyle = Literal["skeletal", "ball_stick"]
 
 import svgwrite
 import svgwrite.base
@@ -71,14 +74,10 @@ DEFAULT_STYLE: dict[str, object] = {
     "chem_atom_O":                  "#C62828",   # oxygen: red
     "chem_atom_P":                  "#EF6C00",   # phosphorus: orange
     "chem_atom_S":                  "#F9A825",   # sulfur: yellow
-    "chem_atom_default":            "#1A1A1A",   # any element not listed above
     "chem_atom_font_scale":          1.0,        # multiplier on RDKit's baseFontSize
     # Bonds
     "chem_bond_stroke":             "#1A1A1A",   # bond line color (post-pass restyle)
     "chem_bond_stroke_width":        2.0,
-    # Background -- "none" keeps the molecule transparent for overlay use
-    "chem_background":              "none",
-    "chem_molecule_padding":         4.0,        # px padding inside Group bbox
     # Reaction layout
     "chem_reaction_arrow_length":   60.0,
     "chem_reaction_arrow_stroke":   "#1A1A1A",
@@ -192,6 +191,7 @@ def _rdkit_mol_to_svg(
 
 # Match `stroke:#xxxxxx` inside a style attribute (RDKit emits bond color this way)
 _STROKE_IN_STYLE_RE = re.compile(r"stroke:#[0-9A-Fa-f]{6}")
+_XMLNS_RE = re.compile(r"\sxmlns(:\w+)?='[^']*'")
 
 
 def _restyle_rdkit_svg(svg_text: str, style: dict) -> ET.Element:
@@ -205,7 +205,7 @@ def _restyle_rdkit_svg(svg_text: str, style: dict) -> ET.Element:
     """
     # RDKit declares xmlns by default; strip so element tags compare cleanly
     # without {http://...}path prefixes.
-    svg_text = re.sub(r"\sxmlns(:\w+)?='[^']*'", "", svg_text)
+    svg_text = _XMLNS_RE.sub("", svg_text)
     root = ET.fromstring(svg_text)
     bond_replacement = f"stroke:{style['chem_bond_stroke']}"
     for elem in root.iter("path"):
@@ -279,7 +279,7 @@ def _arrow(
 def render_molecule(
     smiles: str,
     size: tuple[int, int] = (200, 150),
-    style: str = "skeletal",
+    style: MoleculeStyle = "skeletal",
     style_dict: dict | None = None,
     center: tuple[float, float] | None = None,
 ) -> svgwrite.container.Group:
@@ -354,16 +354,13 @@ def render_reaction(
     plus_color = str(style["chem_reaction_plus_color"])
 
     group = svgwrite.container.Group()
-    cursor = 0.0
     midline_y = mol_h / 2.0
 
-    def _place_block(smiles_list: list[str]) -> None:
-        nonlocal cursor
+    def _place_block(smiles_list: list[str], cursor: float) -> float:
         for i, smi in enumerate(smiles_list):
             mol = _smiles_to_mol(smi)
-            block = _inline_molecule(mol, (mol_w, mol_h), "skeletal", style,
-                                     translate=(cursor, 0.0))
-            group.add(block)
+            group.add(_inline_molecule(mol, (mol_w, mol_h), "skeletal", style,
+                                       translate=(cursor, 0.0)))
             cursor += mol_w
             if i < len(smiles_list) - 1:
                 cursor += gap
@@ -374,38 +371,37 @@ def render_reaction(
                     font_family=str(style["label_font_family"]),
                 ))
                 cursor += plus_size + gap
+        return cursor
 
-    _place_block(reactants_smiles)
-    cursor += gap
+    cursor = _place_block(reactants_smiles, 0.0) + gap
     arrow_start = (cursor, midline_y)
     arrow_end = (cursor + arrow_len, midline_y)
     for elem in _arrow(arrow_start, arrow_end, style):
         group.add(elem)
 
     if conditions:
-        cond_size = int(style["chem_conditions_font_size"])
-        cond_color = str(style["chem_conditions_color"])
-        cond_offset = float(style["chem_conditions_offset"])
         arrow_mid_x = cursor + arrow_len / 2.0
+        cond_size = int(style["chem_conditions_font_size"])
+        cond_offset = float(style["chem_conditions_offset"])
+
+        def _condition_text(text: str, y: float) -> svgwrite.text.Text:
+            return svgwrite.text.Text(
+                text,
+                insert=(arrow_mid_x, y),
+                font_size=cond_size, fill=str(style["chem_conditions_color"]),
+                font_family=str(style["label_font_family"]),
+                text_anchor="middle",
+            )
+
         if conditions.get("above"):
-            group.add(svgwrite.text.Text(
-                str(conditions["above"]),
-                insert=(arrow_mid_x, midline_y - cond_offset),
-                font_size=cond_size, fill=cond_color,
-                font_family=str(style["label_font_family"]),
-                text_anchor="middle",
-            ))
+            group.add(_condition_text(str(conditions["above"]),
+                                      midline_y - cond_offset))
         if conditions.get("below"):
-            group.add(svgwrite.text.Text(
-                str(conditions["below"]),
-                insert=(arrow_mid_x, midline_y + cond_offset + cond_size),
-                font_size=cond_size, fill=cond_color,
-                font_family=str(style["label_font_family"]),
-                text_anchor="middle",
-            ))
+            group.add(_condition_text(str(conditions["below"]),
+                                      midline_y + cond_offset + cond_size))
 
     cursor += arrow_len + gap
-    _place_block(products_smiles)
+    _place_block(products_smiles, cursor)
     return group
 
 

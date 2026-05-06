@@ -55,9 +55,8 @@ def _render_to_png(
 def test_default_style_has_all_namespaced_keys():
     required = {
         "chem_atom_C", "chem_atom_N", "chem_atom_O", "chem_atom_P", "chem_atom_S",
-        "chem_atom_default", "chem_atom_font_scale",
+        "chem_atom_font_scale",
         "chem_bond_stroke", "chem_bond_stroke_width",
-        "chem_background", "chem_molecule_padding",
         "chem_reaction_arrow_length", "chem_reaction_arrow_stroke",
         "chem_reaction_arrow_stroke_width", "chem_reaction_arrow_head_size",
         "chem_reaction_gap",
