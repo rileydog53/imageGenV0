@@ -439,13 +439,18 @@ def pipette(
         fill=str(style["pipette_body_fill"]), stroke=stroke, stroke_width=sw,
     ))
     if volume:
-        g.add(svgwrite.text.Text(
+        # SVG text y is the baseline, not the visual center -- without
+        # dominant-baseline=central the label sits ~half a font-height above
+        # the body midline.
+        label = svgwrite.text.Text(
             volume,
             insert=(bw + 4, btn_h + bh / 2.0),
             font_size=int(style["label_font_size"]),
             fill=str(style["label_font_color"]),
             font_family=str(style["label_font_family"]),
-        ))
+        )
+        label["dominant-baseline"] = "central"
+        g.add(label)
     return g
 
 
