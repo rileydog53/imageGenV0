@@ -144,6 +144,19 @@ RELATION_TO_ARROW: dict[RelationType, Callable[..., svgwrite.container.Group]] =
 _IMPLICIT_COMPARTMENT_ID = "__implicit__"
 
 
+# Archetypes that share the "entity-graph laid out across compartment bands"
+# shape. All of these route to layout_pathway; the panel engine relies on
+# this for sub-archetype dispatch, and standalone callers can pass any of
+# them too. REACTION_SCHEME stays out: it has a dedicated engine and a
+# different kwargs contract (smiles_map).
+_PATHWAY_COMPATIBLE_ARCHETYPES = {
+    Archetype.PATHWAY,
+    Archetype.WORKFLOW,
+    Archetype.CELLULAR_SCHEMATIC,
+    Archetype.MECHANISM_CARTOON,
+}
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -356,9 +369,10 @@ def layout_pathway(
     Raises:
         ValueError: figure.archetype is not PATHWAY, or entities is empty.
     """
-    if figure.archetype != Archetype.PATHWAY:
+    if figure.archetype not in _PATHWAY_COMPATIBLE_ARCHETYPES:
         raise ValueError(
-            f"layout_pathway requires archetype=PATHWAY, "
+            f"layout_pathway requires archetype in "
+            f"{sorted(a.value for a in _PATHWAY_COMPATIBLE_ARCHETYPES)}, "
             f"got {figure.archetype!r}"
         )
     if not figure.entities:
