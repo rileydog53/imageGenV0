@@ -82,12 +82,33 @@ DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
     "pathway_origin":            (0.0, 0.0),        # top-left of canvas
     "pathway_band_padding":      40.0,              # horizontal padding inside band
     "pathway_seed":              42,                # NetworkX RNG seed
+    "pathway_arrow_gap":         4.0,               # px between bbox edge and arrow tip
     "pathway_band_fill":         "#F7F9FB",
     "pathway_band_stroke":       "#C8D4DD",
     "pathway_band_stroke_width": 0.5,
     "pathway_band_label_color":  "#4A5C68",
     "pathway_band_label_size":   11,
     "pathway_band_label_family": "Helvetica, Arial, sans-serif",
+}
+
+
+# Per-EntityType bounding boxes (w, h), tracking each primitive's default
+# size in `primitives/proteins.py`. Used to inset arrow endpoints to the
+# entity's perimeter so shafts/heads never overlap entity labels. Keep in
+# sync if a primitive's default size changes; Phase 4's master preset will
+# centralise this so the table can come from style instead.
+_ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
+    EntityType.PROTEIN:    (60.0, 30.0),
+    EntityType.LIGAND:     (60.0, 30.0),
+    EntityType.RECEPTOR:   (28.0, 60.0),
+    EntityType.KINASE:     (70.0, 32.0),
+    EntityType.GENE:       (60.0, 30.0),
+    EntityType.METABOLITE: (60.0, 30.0),
+    EntityType.CELL:       (60.0, 30.0),
+    EntityType.ORGANELLE:  (60.0, 30.0),
+    EntityType.EQUIPMENT:  (60.0, 30.0),
+    EntityType.SAMPLE:     (60.0, 30.0),
+    EntityType.GENERIC:    (60.0, 30.0),
 }
 
 
@@ -228,6 +249,49 @@ def _graph_positions(
     return pos
 
 
+def _bbox_exit_point(
+    center: tuple[float, float],
+    half_w: float,
+    half_h: float,
+    target: tuple[float, float],
+    gap: float = 0.0,
+) -> tuple[float, float]:
+    """Where the line `center → target` exits an axis-aligned bbox.
+
+    Returns `center` itself if the two points coincide. The optional `gap`
+    pushes the exit point another `gap` px along the direction (so an
+    arrow's head visually clears the shape). The gap is clamped to the
+    line's actual length to avoid overshooting past `target`.
+    """
+    cx, cy = center
+    tx, ty = target
+    dx, dy = tx - cx, ty - cy
+    if dx == 0 and dy == 0:
+        return center
+    inv_x = half_w / abs(dx) if dx else float("inf")
+    inv_y = half_h / abs(dy) if dy else float("inf")
+    t_edge = min(inv_x, inv_y)
+    length = (dx * dx + dy * dy) ** 0.5
+    t_gap = gap / length if length else 0.0
+    t = min(t_edge + t_gap, 1.0)
+    return (cx + t * dx, cy + t * dy)
+
+
+def _arrow_endpoints(
+    src_center: tuple[float, float],
+    src_bbox: tuple[float, float],
+    tgt_center: tuple[float, float],
+    tgt_bbox: tuple[float, float],
+    gap: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Inset both ends of a relation arrow to their entity bbox edges + gap."""
+    src_w, src_h = src_bbox
+    tgt_w, tgt_h = tgt_bbox
+    start = _bbox_exit_point(src_center, src_w / 2, src_h / 2, tgt_center, gap)
+    end = _bbox_exit_point(tgt_center, tgt_w / 2, tgt_h / 2, src_center, gap)
+    return start, end
+
+
 def _compartment_band(
     label: str,
     x: float,
@@ -315,6 +379,8 @@ def layout_pathway(
     style_kwargs: dict = {"style_dict": style_dict} if style_dict is not None else {}
     cw, _ = canvas
     ox, _ = origin
+    arrow_gap = float(params["pathway_arrow_gap"])
+    entity_by_id = {e.id: e for e in figure.entities}
 
     def _entry(primitive: Callable, args: tuple, kwargs: dict) -> LayoutEntry:
         return LayoutEntry(primitive, args, kwargs, position=(0.0, 0.0))
@@ -339,9 +405,16 @@ def layout_pathway(
         ))
 
     for r in figure.relations:
+        src = entity_by_id[r.source]
+        tgt = entity_by_id[r.target]
+        start, end = _arrow_endpoints(
+            positions[r.source], _ENTITY_BBOX[src.type],
+            positions[r.target], _ENTITY_BBOX[tgt.type],
+            arrow_gap,
+        )
         entries.append(_entry(
             RELATION_TO_ARROW[r.type],
-            (positions[r.source], positions[r.target]),
+            (start, end),
             style_kwargs,
         ))
 

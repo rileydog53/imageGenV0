@@ -17,6 +17,8 @@ from layout.pathway_layout import (
     DEFAULT_LAYOUT_PARAMS,
     ENTITY_TO_PRIMITIVE,
     RELATION_TO_ARROW,
+    _ENTITY_BBOX,
+    _bbox_exit_point,
     _compartment_band,
     layout_pathway,
 )
@@ -291,6 +293,72 @@ def test_default_layout_params_keys_are_namespaced():
     """Mirrors the locked-in 'flat namespaced keys' template."""
     for key in DEFAULT_LAYOUT_PARAMS:
         assert key.startswith("pathway_"), f"non-namespaced key: {key}"
+
+
+# ---------------------------------------------------------------------------
+# Arrow inset to entity bbox edges (so arrows never overlap entity labels)
+# ---------------------------------------------------------------------------
+
+def test_bbox_exit_point_horizontal():
+    # Center at origin, 60×30 bbox, target far right → exits at (30, 0).
+    p = _bbox_exit_point((0.0, 0.0), 30.0, 15.0, (200.0, 0.0), gap=0.0)
+    assert p == pytest.approx((30.0, 0.0))
+
+
+def test_bbox_exit_point_vertical_with_gap():
+    # 60×30 bbox, target above; exit at (0, -15) plus 4px gap upward.
+    p = _bbox_exit_point((0.0, 0.0), 30.0, 15.0, (0.0, -100.0), gap=4.0)
+    assert p == pytest.approx((0.0, -19.0))
+
+
+def test_bbox_exit_point_returns_center_when_target_coincides():
+    p = _bbox_exit_point((10.0, 20.0), 30.0, 15.0, (10.0, 20.0))
+    assert p == (10.0, 20.0)
+
+
+def test_arrow_endpoints_are_outside_entity_bboxes():
+    """Arrows must start/end on the bbox perimeter (plus the configured gap),
+    never at an entity center where they'd overlap the entity's label.
+    Uses the NF-κB fixture, which has two distinct entities sharing the
+    label 'NF-κB' — checks must key by entity id, not label."""
+    fig = _load_fixture("multi_compartment_translocation.json")
+    entries = layout_pathway(fig)
+
+    # The order of _entity_entries(entries) matches figure.entities order.
+    centers_by_id = {
+        ent.id: entry.args[1]
+        for ent, entry in zip(fig.entities, _entity_entries(entries))
+    }
+    type_by_id = {e.id: e.type for e in fig.entities}
+    gap = DEFAULT_LAYOUT_PARAMS["pathway_arrow_gap"]
+
+    for arrow, relation in zip(_arrow_entries(entries), fig.relations):
+        start, end = arrow.args
+        assert start != centers_by_id[relation.source]
+        assert end != centers_by_id[relation.target]
+
+        # Endpoint must lie on or outside the bbox edge: at least one axis
+        # offset reaches half-extent. The configured gap pushes further along
+        # the arrow's *direction*, not axis-aligned, so the perpendicular
+        # offset alone need not exceed half + gap.
+        for eid, point in ((relation.source, start), (relation.target, end)):
+            cx, cy = centers_by_id[eid]
+            w, h = _ENTITY_BBOX[type_by_id[eid]]
+            on_x_edge = abs(point[0] - cx) >= w / 2 - 1e-6
+            on_y_edge = abs(point[1] - cy) >= h / 2 - 1e-6
+            assert on_x_edge or on_y_edge, (
+                f"arrow endpoint {point} sits strictly inside entity "
+                f"{eid}'s bbox (center={(cx, cy)}, size=({w}, {h}))"
+            )
+
+
+def test_arrow_gap_is_overridable():
+    fig = _load_fixture("mapk_cascade.json")
+    tight = layout_pathway(fig, layout_params={"pathway_arrow_gap": 0.0})
+    loose = layout_pathway(fig, layout_params={"pathway_arrow_gap": 20.0})
+    tight_first = _arrow_entries(tight)[0].args
+    loose_first = _arrow_entries(loose)[0].args
+    assert tight_first != loose_first
 
 
 # ---------------------------------------------------------------------------
