@@ -1,0 +1,19 @@
+{
+  "archetype": "reaction_scheme",
+  "entities": [
+    {"id": "alkyl_halide", "type": "metabolite", "label": "1-Bromopropane"},
+    {"id": "nucleophile", "type": "metabolite", "label": "KOH"},
+    {"id": "alcohol", "type": "metabolite", "label": "1-Propanol"}
+  ],
+  "relations": [
+    {
+      "source": "alkyl_halide",
+      "target": "alcohol",
+      "type": "generic",
+      "conditions": {
+        "reagents": ["KOH"],
+        "yield_pct": 87.0
+      }
+    }
+  ]
+}

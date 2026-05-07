@@ -1,0 +1,18 @@
+{
+  "archetype": "reaction_scheme",
+  "entities": [
+    {"id": "alcohol", "type": "metabolite", "label": "Ethanol"},
+    {"id": "aldehyde", "type": "metabolite", "label": "Acetaldehyde"}
+  ],
+  "relations": [
+    {
+      "source": "alcohol",
+      "target": "aldehyde",
+      "type": "generic",
+      "conditions": {
+        "reagents": ["Na2Cr2O7", "H2SO4"],
+        "notes": "RT, 4 h"
+      }
+    }
+  ]
+}

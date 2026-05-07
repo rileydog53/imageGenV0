@@ -1,0 +1,24 @@
+{
+  "archetype": "reaction_scheme",
+  "entities": [
+    {"id": "alkene", "type": "metabolite", "label": "Propene"},
+    {"id": "water", "type": "metabolite", "label": "Water"},
+    {"id": "product", "type": "metabolite", "label": "Isopropanol"}
+  ],
+  "relations": [
+    {
+      "source": "alkene",
+      "target": "product",
+      "type": "generic",
+      "conditions": {
+        "reagents": ["H2SO4 (cat.)"],
+        "notes": "65°C"
+      }
+    },
+    {
+      "source": "water",
+      "target": "product",
+      "type": "generic"
+    }
+  ]
+}
