@@ -2,6 +2,37 @@
 
 Scientific figure generation skill — vector-first, IR-driven. Produces publication-style schematics, pathway diagrams, reaction schemes, and graphical abstracts from natural-language prompts.
 
+---
+
+## 🤖 For AI Agents: Start Here
+
+You're working as the **builder** in a 3-role team (you, a senior architect, and a product owner). Before writing code:
+
+1. **[ROADMAP.md](ROADMAP.md)** (5 min) — Current phase/step, what's done, what's next, test count
+2. **[WORKFLOW.md](WORKFLOW.md)** (10 min) — The 3-role rhythm, GitHub PR process, how to structure your commits
+3. **`~/Desktop/TODO.txt`** `IN PROGRESS:` section — Your specific current task with acceptance criteria
+4. **Pattern file** — Read the completed module matching your phase (e.g., `primitives/proteins.py` for Phase 2 style)
+
+### Quick Context
+
+- **Phase:** 3 (Layout Engines), Step 2 of 4
+- **Tests:** 172 passing ✅
+- **Next task:** `layout/pathway_layout.py` — compartment-aware pathway layout
+- **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
+- **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
+
+### TL;DR for the Impatient
+
+Read the **IN PROGRESS section** of `~/Desktop/TODO.txt`. It tells you:
+- What to build (in plain English)
+- Acceptance criteria (tests that must pass)
+- Design choices to make
+- Where to look for patterns
+
+Then follow the step workflow: **Scope → Test plan → Implement → Verify → Simplify → Commit → Update TODO.txt**.
+
+---
+
 ## Status
 
 | Phase | Description | State |
