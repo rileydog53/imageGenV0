@@ -40,14 +40,14 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
-| 3 | Layout engines | 🔄 Steps 1–2/4 done (`reaction_layout.py` ✅, `pathway_layout.py` ✅); Step 3/4 next: `layout/panel_layout.py` |
+| 3 | Layout engines | 🔄 Steps 1–3/4 done (`reaction_layout.py` ✅, `pathway_layout.py` ✅, `panel_layout.py` ✅); Step 4/4 next: `layout/label_placement.py` |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **200 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 25 layout_pathway). Phase 2 (primitive library) complete. Phase 3 Step 1 (`layout/reaction_layout.py`) and Step 2 (`layout/pathway_layout.py`) complete. Step 2 emits compartment-band → entity → arrow `LayoutEntry`s using `ENTITY_TO_PRIMITIVE` / `RELATION_TO_ARROW` dispatch dicts and a seeded `nx.spring_layout` snapped into each band. Phase 3 Step 3 next: `layout/panel_layout.py`.
+Current test count: **222 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel). Phase 2 (primitive library) complete. Phase 3 Steps 1–3 complete: `layout/reaction_layout.py` (thin REACTION_SCHEME translation), `layout/pathway_layout.py` (compartment-band entity-graph layout with bbox-edge arrow inset), and `layout/panel_layout.py` (multi-panel grid layout that recursively dispatches each `panel.content` to the appropriate sub-engine and offsets entries via `LayoutEntry.position` — first real consumer of that field). Phase 3 Step 4 next: `layout/label_placement.py`.
 
 ## Plan
 
