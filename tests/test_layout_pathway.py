@@ -79,12 +79,24 @@ def _band_geom(entry: LayoutEntry) -> tuple[str, float, float, float, float]:
 # ---------------------------------------------------------------------------
 
 def test_wrong_archetype_raises():
+    """REACTION_SCHEME has its own engine; layout_pathway must reject it."""
     fig = Figure(
         archetype=Archetype.REACTION_SCHEME,
         entities=[Entity(id="x", type=EntityType.GENERIC, label="X")],
     )
-    with pytest.raises(ValueError, match="PATHWAY"):
+    with pytest.raises(ValueError, match="archetype"):
         layout_pathway(fig)
+
+
+def test_workflow_archetype_accepted():
+    """WORKFLOW / CELLULAR_SCHEMATIC / MECHANISM_CARTOON share the
+    pathway entity-graph shape and route through layout_pathway too."""
+    fig = Figure(
+        archetype=Archetype.WORKFLOW,
+        entities=[Entity(id="x", type=EntityType.GENERIC, label="X")],
+    )
+    entries = layout_pathway(fig)
+    assert entries
 
 
 def test_empty_entities_raises():
