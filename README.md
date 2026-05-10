@@ -15,9 +15,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 ### Quick Context
 
-- **Phase:** 4 (Style Presets) in progress
-- **Tests:** 238 passing ✅
-- **Next task:** `styles/loader.py` — Pydantic-validated `load_style(name)` returning a flat overrides dict
+- **Phase:** 4 (Style Presets) complete; Phase 5 (renderer/compositor) next
+- **Tests:** 263 passing ✅
+- **Next task:** `render/compositor.py` — top-level `render_figure(ir, style_name, ...)` that loads a preset, dispatches to a layout engine, and composes a final SVG
 - **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
 - **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
 
@@ -41,13 +41,13 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
-| 4 | Style presets | 🔄 JSONs shipped (`cell_press`, `nature`, `acs`); `loader.py` next |
+| 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
 | 5 | Renderer & compositor | ⬜ Pending |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **238 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete: `layout/reaction_layout.py` (thin REACTION_SCHEME translation), `layout/pathway_layout.py` (compartment-band entity-graph layout with bbox-edge arrow inset), `layout/panel_layout.py` (multi-panel grid layout that recursively dispatches each `panel.content` to the appropriate sub-engine and offsets entries via `LayoutEntry.position`), and `layout/label_placement.py` (greedy automated relation-label placement; pure post-pass driven by sibling helpers like `pathway_label_requests`). Phase 4 (style presets) next.
+Current test count: **263 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement + 25 styles_loader). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete. Phase 4 (style presets) complete: three JSON presets (`cell_press` default, `nature` Tol-palette, `acs` monochrome chemistry) loaded by Pydantic-validated `styles/loader.py`. `load_style(name) -> dict` returns the preset's sparse `overrides`; primitive `DEFAULT_STYLE` fills the rest. Phase 5 (renderer/compositor) next.
 
 ## Plan
 
