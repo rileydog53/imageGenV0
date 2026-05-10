@@ -481,12 +481,22 @@ def pathway_label_requests(
             continue
         (sx, sy), (ex, ey) = arrow.args
         midpoint = ((sx + ex) / 2, (sy + ey) / 2)
-        # The anchor is a notional point on the arrow shaft; give it a
-        # small bbox so label_placement's gap pushes the label clear of
-        # the line without over-spacing.
+        # Place the label perpendicular to the arrow shaft so it doesn't
+        # render directly on top of the line. For a mostly-horizontal arrow
+        # try above/below first; for a mostly-vertical arrow try right/left
+        # first. The default priority ("right", "below", ...) would put a
+        # horizontal-arrow label at the same y as the arrow itself.
+        dx, dy = ex - sx, ey - sy
+        if abs(dx) >= abs(dy):
+            priority = ("above", "below", "right", "left", "center")
+        else:
+            priority = ("right", "left", "above", "below", "center")
+        # Anchor is a notional point on the arrow shaft; small bbox so
+        # label_placement's gap dominates spacing.
         requests.append(LabelRequest(
             text=text,
             anchor=midpoint,
             anchor_size=(2.0, 2.0),
+            priority=priority,
         ))
     return requests
