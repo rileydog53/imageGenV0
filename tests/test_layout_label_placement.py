@@ -19,8 +19,7 @@ from layout.label_placement import (
     place_labels,
 )
 from layout.pathway_layout import (
-    _ENTITY_BBOX,
-    ENTITY_TO_PRIMITIVE,
+    RELATION_TO_ARROW,
     layout_pathway,
     pathway_label_requests,
 )
@@ -212,13 +211,6 @@ def test_pathway_label_requests_anchors_at_arrow_midpoint():
     fig = _load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
     requests = pathway_label_requests(fig, entries)
-    arrow_entries = [
-        e for e in entries
-        if e.primitive in {arrow for arrow in ENTITY_TO_PRIMITIVE.values()} or  # not entity
-        False
-    ]
-    # Direct check: each request's anchor lies between the two endpoint coordinates.
-    from layout.pathway_layout import RELATION_TO_ARROW
     arrow_entries = [e for e in entries if e.primitive in RELATION_TO_ARROW.values()]
     by_label = {r.label: a for r, a in zip(fig.relations, arrow_entries) if r.label}
     for req in requests:

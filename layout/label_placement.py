@@ -55,13 +55,13 @@ Phase 4 / 5 coupling:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import Any
 
 import svgwrite.container
-import svgwrite.text
 
 from layout.reaction_layout import LayoutEntry
+from primitives import proteins
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +100,7 @@ class LabelRequest:
     text: str
     anchor: tuple[float, float]
     anchor_size: tuple[float, float]
-    priority: tuple[str, ...] = field(default=_VALID_PRIORITIES)
+    priority: tuple[str, ...] = _VALID_PRIORITIES
 
     def __post_init__(self) -> None:
         unknown = [p for p in self.priority if p not in _VALID_PRIORITIES]
@@ -193,6 +193,15 @@ def _overlaps(a: Bbox, b: Bbox, margin: float) -> bool:
     )
 
 
+_ENTITY_PRIMITIVES: frozenset = frozenset({
+    proteins.generic_protein,
+    proteins.kinase,
+    proteins.receptor,
+    proteins.gpcr,
+    proteins.transcription_factor,
+})
+
+
 def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     """Best-effort bbox extraction for a positioned LayoutEntry.
 
@@ -200,44 +209,34 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     bands and panel chrome span the full canvas / cell and are treated
     as decorative backgrounds (see module docstring). Arrows, labels,
     and any other unknown primitives return None.
-
-    Imports are deferred to avoid circular references at module load.
     """
-    from layout import pathway_layout  # noqa: PLC0415 — break import cycle
-    from primitives import proteins  # noqa: PLC0415
+    if entry.primitive not in _ENTITY_PRIMITIVES:
+        return None
+    # entity-primitive args: (label, (cx, cy), ...) per pathway_layout
+    _, center = entry.args[:2]
+    cx, cy = center
+    # Reverse-lookup the bbox via the per-EntityType table. Multiple
+    # EntityTypes can share a primitive — pick the largest bbox among
+    # them so collision checks stay conservative. Lazy import breaks the
+    # `pathway_layout → label_placement` cycle for `pathway_label_requests`.
+    from layout import pathway_layout  # noqa: PLC0415
+    candidates = [
+        pathway_layout._ENTITY_BBOX[t]
+        for t, p in pathway_layout.ENTITY_TO_PRIMITIVE.items()
+        if p is entry.primitive
+    ]
+    if not candidates:
+        return None
+    w = max(c[0] for c in candidates)
+    h = max(c[1] for c in candidates)
+    return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
 
-    prim = entry.primitive
 
-    entity_primitives = {
-        proteins.generic_protein,
-        proteins.kinase,
-        proteins.receptor,
-        proteins.gpcr,
-        proteins.transcription_factor,
-    }
-    if prim in entity_primitives:
-        # entity-primitive args: (label, (cx, cy), ...) per pathway_layout
-        try:
-            _, center = entry.args[:2]
-            cx, cy = center
-        except (ValueError, TypeError):
-            return None
-        # Reverse-lookup the bbox via the per-EntityType table; no direct
-        # primitive→bbox map exists, so we infer from the primitive identity.
-        # Multiple EntityTypes can share a primitive — pick the largest
-        # bbox among them so collision checks stay conservative.
-        candidates = [
-            pathway_layout._ENTITY_BBOX[t]
-            for t, p in pathway_layout.ENTITY_TO_PRIMITIVE.items()
-            if p is prim
-        ]
-        if not candidates:
-            return None
-        w = max(c[0] for c in candidates)
-        h = max(c[1] for c in candidates)
-        return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
-
-    return None
+_DEFAULT_LABEL_STYLE: dict = {
+    "label_font_family": "Helvetica, Arial, sans-serif",
+    "label_font_size": 11,
+    "label_font_color": "#1A1A1A",
+}
 
 
 def _label_primitive(
@@ -245,29 +244,16 @@ def _label_primitive(
     center: tuple[float, float],
     style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
-    """Render a single label as a centered Text element wrapped in a Group.
+    """Render a single label as a centered Text wrapped in a Group.
 
-    Mirrors `proteins._centered_label`'s style-key contract so the Phase 4
-    master preset's `label_*` keys flow through unchanged.
+    Delegates the Text construction to `proteins._centered_label`, the
+    established label-text contract for this codebase, so Phase 4
+    master-preset `label_*` keys flow through one helper.
     """
-    style = {
-        "label_font_family": "Helvetica, Arial, sans-serif",
-        "label_font_size": 11,
-        "label_font_color": "#1A1A1A",
-        **(style_dict or {}),
-    }
+    style = {**_DEFAULT_LABEL_STYLE, **(style_dict or {})}
     cx, cy = center
     g = svgwrite.container.Group()
-    t = svgwrite.text.Text(
-        text,
-        insert=(cx, cy),
-        font_family=style["label_font_family"],
-        font_size=float(style["label_font_size"]),
-        fill=style["label_font_color"],
-    )
-    t["text-anchor"] = "middle"
-    t["dominant-baseline"] = "central"
-    g.add(t)
+    g.add(proteins._centered_label(text, cx, cy, style))
     return g
 
 
