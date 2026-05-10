@@ -15,9 +15,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 ### Quick Context
 
-- **Phase:** 3 (Layout Engines), Step 4 of 4 (in progress)
-- **Tests:** 222 passing ✅
-- **Next task:** `layout/label_placement.py` — greedy automated relation-label placement
+- **Phase:** 3 (Layout Engines) complete; Phase 4 (style presets) next
+- **Tests:** 238 passing ✅
+- **Next task:** `styles/` JSON presets (`cell_press`, `nature`, `acs`) + `styles/loader.py`
 - **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
 - **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
 
@@ -40,14 +40,14 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 0 | Project setup, deps, smoke tests | ✅ Done (2026-05-02, `d82a6ce`) |
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
-| 3 | Layout engines | 🔄 Steps 1–3/4 done (`reaction_layout.py` ✅, `pathway_layout.py` ✅, `panel_layout.py` ✅); Step 4/4 in progress: `layout/label_placement.py` |
+| 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
 | 4 | Style presets | ⬜ Pending |
 | 5 | Renderer & compositor | ⬜ Pending |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **222 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel). Phase 2 (primitive library) complete. Phase 3 Steps 1–3 complete: `layout/reaction_layout.py` (thin REACTION_SCHEME translation), `layout/pathway_layout.py` (compartment-band entity-graph layout with bbox-edge arrow inset), and `layout/panel_layout.py` (multi-panel grid layout that recursively dispatches each `panel.content` to the appropriate sub-engine and offsets entries via `LayoutEntry.position` — first real consumer of that field). Phase 3 Step 4 next: `layout/label_placement.py`.
+Current test count: **238 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete: `layout/reaction_layout.py` (thin REACTION_SCHEME translation), `layout/pathway_layout.py` (compartment-band entity-graph layout with bbox-edge arrow inset), `layout/panel_layout.py` (multi-panel grid layout that recursively dispatches each `panel.content` to the appropriate sub-engine and offsets entries via `LayoutEntry.position`), and `layout/label_placement.py` (greedy automated relation-label placement; pure post-pass driven by sibling helpers like `pathway_label_requests`). Phase 4 (style presets) next.
 
 ## Plan
 

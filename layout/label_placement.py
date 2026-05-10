@@ -29,12 +29,14 @@ Bbox sources:
     (a small per-`EntityType` table). Cross-module import is private but
     documented; promoting `_ENTITY_BBOX` to a shared `layout/_geom.py`
     is a deferred cleanup flagged in `~/Desktop/TODO.txt`.
-  - Compartment-band entries (chrome): bbox comes from the entry's args
-    `(label, x, y, w, h)` directly.
-  - Other primitives (arrows, panel chrome, etc.): treated as no-bbox
-    and skipped from collision checks. Arrows are thin shafts; allowing
-    label-on-shaft overlap in v1 keeps the engine simple. Phase 6
-    `legibility_check` will surface any visible problem.
+  - Compartment bands and panel chrome: treated as no-bbox. These
+    primitives are full-width decorative backgrounds, not obstructions —
+    labels are expected to render on top of them. Including them would
+    block every candidate position because they span the entire canvas.
+  - Other primitives (arrows, label primitives, etc.): also no-bbox.
+    Arrows are thin shafts; allowing label-on-shaft overlap in v1 keeps
+    the engine simple. Phase 6 `legibility_check` will surface any
+    visible problem.
 
   Label bboxes are estimated from text length × font size with a fixed
   width-to-height aspect (no font-metric library at this stage; svgwrite
@@ -194,19 +196,17 @@ def _overlaps(a: Bbox, b: Bbox, margin: float) -> bool:
 def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     """Best-effort bbox extraction for a positioned LayoutEntry.
 
-    Returns None when the primitive isn't a known shape (arrows, label
-    primitives, etc.); callers skip None bboxes from collision checks.
+    Only entity primitives contribute a collision bbox. Compartment
+    bands and panel chrome span the full canvas / cell and are treated
+    as decorative backgrounds (see module docstring). Arrows, labels,
+    and any other unknown primitives return None.
+
     Imports are deferred to avoid circular references at module load.
     """
     from layout import pathway_layout  # noqa: PLC0415 — break import cycle
     from primitives import proteins  # noqa: PLC0415
 
     prim = entry.primitive
-
-    if prim is pathway_layout._compartment_band:
-        # args: (label, x, y, w, h, ...)
-        _, x, y, w, h = entry.args[:5]
-        return (x, y, x + w, y + h)
 
     entity_primitives = {
         proteins.generic_protein,
