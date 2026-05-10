@@ -433,3 +433,60 @@ def layout_pathway(
         ))
 
     return entries
+
+
+def pathway_label_requests(
+    figure: Figure,
+    entries: list[LayoutEntry],
+    layout_params: dict | None = None,
+) -> list:
+    """Emit one `LabelRequest` per labeled relation in a pathway figure.
+
+    Walks `figure.relations`; for each relation whose `label` is a
+    non-empty string, anchors a request at the midpoint of the
+    corresponding arrow's start/end (read back from the matching arrow
+    LayoutEntry). The anchor bbox is small (a thin shaft point), so
+    label_placement's offset gap dominates the spacing.
+
+    Imported lazily by `label_placement.py` callers; declared here so
+    the IR-shape walk lives next to its archetype's other concerns.
+    Returns `list[label_placement.LabelRequest]` (typed as `list` to
+    avoid an import cycle in this module).
+
+    Args:
+        figure: The same IR Figure passed to `layout_pathway`.
+        entries: The exact list returned from `layout_pathway(figure)`.
+            Used to recover the bbox-inset arrow endpoints (so labels
+            anchor at the rendered arrow midpoint, not the raw entity
+            centers).
+        layout_params: Optional overlay; reserved for future use
+            (currently no params are read).
+
+    Returns:
+        A list of LabelRequest items, one per `Relation.label` that is
+        truthy. Empty when no relations carry labels.
+    """
+    from layout.label_placement import LabelRequest  # noqa: PLC0415 — break import cycle
+
+    arrow_entries = [e for e in entries if e.primitive in RELATION_TO_ARROW.values()]
+    if len(arrow_entries) != len(figure.relations):
+        raise ValueError(
+            "pathway_label_requests requires the entries list returned by "
+            "layout_pathway(figure); arrow count does not match relations"
+        )
+    requests: list[LabelRequest] = []
+    for relation, arrow in zip(figure.relations, arrow_entries):
+        text = relation.label
+        if not text:
+            continue
+        (sx, sy), (ex, ey) = arrow.args
+        midpoint = ((sx + ex) / 2, (sy + ey) / 2)
+        # The anchor is a notional point on the arrow shaft; give it a
+        # small bbox so label_placement's gap pushes the label clear of
+        # the line without over-spacing.
+        requests.append(LabelRequest(
+            text=text,
+            anchor=midpoint,
+            anchor_size=(2.0, 2.0),
+        ))
+    return requests
