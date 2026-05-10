@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "name": "cell_press",
+    "description": "Friendly default — soft pastels, rounded shapes, sans-serif labels. Matches existing primitive defaults; loading this preset is a near-no-op."
+  },
+  "palette": [
+    "#7BB6E0", "#F5A623", "#9CC4A0", "#C19CD0",
+    "#E8B4B8", "#5C6BC0", "#E65100", "#7E57C2"
+  ],
+  "overrides": {
+    "label_font_family": "Helvetica, Arial, sans-serif",
+    "label_font_size": 11,
+    "label_font_color": "#1A1A1A",
+
+    "protein_fill": "#7BB6E0",
+    "protein_stroke": "#1F4E79",
+    "protein_stroke_width": 1.5,
+    "protein_corner_radius": 6,
+
+    "kinase_fill": "#F5A623",
+    "kinase_stroke": "#8B5A00",
+
+    "receptor_fill": "#9CC4A0",
+    "receptor_stroke": "#3D6B43",
+
+    "gpcr_helix_fill": "#C19CD0",
+    "gpcr_helix_stroke": "#5B3173",
+
+    "tf_fill": "#E8B4B8",
+    "tf_stroke": "#8B3A3F"
+  }
+}

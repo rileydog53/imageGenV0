@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "name": "nature",
+    "description": "Bolder, geometric. Saturated 8-color qualitative palette derived from Paul Tol's colorblind-safe set. Thicker strokes, slightly larger labels."
+  },
+  "palette": [
+    "#332288", "#117733", "#44AA99", "#88CCEE",
+    "#DDCC77", "#CC6677", "#AA4499", "#882255"
+  ],
+  "overrides": {
+    "label_font_family": "Helvetica, Arial, sans-serif",
+    "label_font_size": 12,
+    "label_font_color": "#0E1A2B",
+
+    "protein_fill": "#88CCEE",
+    "protein_stroke": "#332288",
+    "protein_stroke_width": 2.0,
+    "protein_corner_radius": 4,
+
+    "kinase_fill": "#DDCC77",
+    "kinase_stroke": "#664400",
+    "kinase_badge_fill": "#882255",
+
+    "receptor_fill": "#117733",
+    "receptor_stroke": "#0A3D1A",
+
+    "gpcr_helix_fill": "#AA4499",
+    "gpcr_helix_stroke": "#5B1A4D",
+    "gpcr_loop_stroke_width": 2.0,
+
+    "tf_fill": "#CC6677",
+    "tf_stroke": "#5B1F2A",
+    "tf_dbd_fill": "#5B1F2A",
+
+    "stroke_width": 2.5,
+    "arrow_head_size": 11,
+
+    "chem_atom_C": "#0E1A2B",
+    "chem_atom_N": "#332288",
+    "chem_atom_O": "#882255",
+    "chem_atom_P": "#CC6677",
+    "chem_atom_S": "#DDCC77",
+    "chem_bond_stroke": "#0E1A2B",
+    "chem_bond_stroke_width": 2.5
+  }
+}

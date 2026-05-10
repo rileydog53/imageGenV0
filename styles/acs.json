@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "name": "acs",
+    "description": "Black-and-white, minimal color, formal — chemistry default. Color is reserved for CPK atom labels (carbon black, nitrogen blue, oxygen red); everything else is greyscale. Palette entries are required by schema but visually mostly grey."
+  },
+  "palette": [
+    "#1A1A1A", "#3D3D3D", "#606060", "#838383",
+    "#A6A6A6", "#C9C9C9", "#ECECEC", "#FFFFFF"
+  ],
+  "overrides": {
+    "label_font_family": "Times, Times New Roman, serif",
+    "label_font_size": 10,
+    "label_font_color": "#000000",
+
+    "protein_fill": "#FFFFFF",
+    "protein_stroke": "#1A1A1A",
+    "protein_stroke_width": 1.0,
+    "protein_corner_radius": 2,
+
+    "kinase_fill": "#ECECEC",
+    "kinase_stroke": "#1A1A1A",
+    "kinase_badge_fill": "#1A1A1A",
+    "kinase_badge_text_color": "#FFFFFF",
+
+    "receptor_fill": "#FFFFFF",
+    "receptor_stroke": "#1A1A1A",
+
+    "gpcr_helix_fill": "#C9C9C9",
+    "gpcr_helix_stroke": "#1A1A1A",
+    "gpcr_loop_stroke": "#1A1A1A",
+    "gpcr_loop_stroke_width": 1.0,
+
+    "tf_fill": "#FFFFFF",
+    "tf_stroke": "#1A1A1A",
+    "tf_dbd_fill": "#606060",
+
+    "stroke": "#1A1A1A",
+    "stroke_width": 1.2,
+    "arrow_head_size": 8,
+
+    "chem_atom_C": "#000000",
+    "chem_atom_N": "#1565C0",
+    "chem_atom_O": "#C62828",
+    "chem_atom_P": "#000000",
+    "chem_atom_S": "#000000",
+    "chem_bond_stroke": "#000000",
+    "chem_bond_stroke_width": 1.5,
+    "chem_reaction_arrow_stroke": "#000000",
+    "chem_reaction_arrow_stroke_width": 1.0,
+    "chem_reaction_plus_color": "#000000",
+    "chem_conditions_color": "#000000",
+    "chem_fg_label_color": "#000000",
+
+    "bilayer_outer_stroke": "#1A1A1A",
+    "bilayer_inner_stroke": "#1A1A1A",
+    "bilayer_head_fill": "#A6A6A6",
+    "bilayer_tail_fill": "#ECECEC",
+    "membrane_stroke": "#1A1A1A",
+    "nuclear_outer_stroke": "#1A1A1A",
+    "nuclear_inner_stroke": "#1A1A1A",
+    "nuclear_pore_fill": "#A6A6A6"
+  }
+}

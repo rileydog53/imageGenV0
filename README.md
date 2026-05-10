@@ -15,9 +15,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 ### Quick Context
 
-- **Phase:** 3 (Layout Engines) complete; Phase 4 (style presets) next
+- **Phase:** 4 (Style Presets) in progress
 - **Tests:** 238 passing ✅
-- **Next task:** `styles/` JSON presets (`cell_press`, `nature`, `acs`) + `styles/loader.py`
+- **Next task:** `styles/loader.py` — Pydantic-validated `load_style(name)` returning a flat overrides dict
 - **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
 - **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
 
@@ -41,7 +41,7 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 1 | IR schema (Pydantic models, validators, fixtures) | ✅ Done (2026-05-02, `005d794`) |
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
-| 4 | Style presets | ⬜ Pending |
+| 4 | Style presets | 🔄 JSONs shipped (`cell_press`, `nature`, `acs`); `loader.py` next |
 | 5 | Renderer & compositor | ⬜ Pending |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
