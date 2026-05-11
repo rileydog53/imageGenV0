@@ -11,8 +11,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 1. **[ROADMAP.md](ROADMAP.md)** (5 min) — Current phase/step, what's done, what's next, test count
 2. **[WORKFLOW.md](WORKFLOW.md)** (10 min) — The 3-role rhythm, GitHub PR process, how to structure your commits
 3. **[WORKFLOW_HABITS.md](WORKFLOW_HABITS.md)** (3 min) — Session start/end checklist, red flags, git hygiene, graduation signals
-4. **`~/Desktop/TODO.txt`** `IN PROGRESS:` section — Your specific current task with acceptance criteria
-5. **Pattern file** — Read the completed module matching your phase (e.g., `primitives/proteins.py` for Phase 2 style)
+4. **[DECISIONS.md](DECISIONS.md)** (3 min) — Architectural decisions that span phases. Read if your task touches any cross-cutting concern (IR-id tagging, watermarking, SMILES, labels).
+5. **`~/Desktop/TODO.txt`** `IN PROGRESS:` section — Your specific current task with acceptance criteria
+6. **Pattern file** — Read the completed module matching your phase (e.g., `primitives/proteins.py` for Phase 2 style)
 
 ### Quick Context
 
