@@ -17,9 +17,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 ### Quick Context
 
-- **Phase:** 4 (Style Presets) complete; Phase 5 (renderer/compositor) next
+- **Phase:** 5 (Renderer/compositor) — Step 1 in progress (`compositor.py`, PATHWAY + SVG only)
 - **Tests:** 263 passing ✅
-- **Next task:** `render/compositor.py` — top-level `render_figure(ir, style_name, ...)` that loads a preset, dispatches to a layout engine, and composes a final SVG
+- **Next task:** See `~/Desktop/TODO.txt` IN PROGRESS — Phase 5 Step 1 compositor skeleton
 - **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
 - **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
 
@@ -44,7 +44,7 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
 | 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
-| 5 | Renderer & compositor | ⬜ Pending |
+| 5 | Renderer & compositor | 🔄 In progress (Step 1: `compositor.py` PATHWAY skeleton) |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
