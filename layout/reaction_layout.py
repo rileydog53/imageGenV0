@@ -194,4 +194,5 @@ def layout_reaction(
         args=(reactants_smiles, products_smiles),
         kwargs=kwargs,
         position=params["reaction_origin"],
+        ir_id="reaction_0",
     )]

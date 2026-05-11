@@ -95,11 +95,15 @@ class LabelRequest:
         priority: Ordered tuple of candidate-position names tried in
             sequence. Each must be in
             {"right", "below", "above", "left", "center"}.
+        ir_id: Raw IR id of the entity/relation this label belongs to.
+            The compositor uses this to set `data-ir-id="label_{ir_id}"`
+            on the emitted SVG element (D1). None for engine-internal labels.
     """
     text: str
     anchor: tuple[float, float]
     anchor_size: tuple[float, float]
     priority: tuple[str, ...] = _VALID_PRIORITIES
+    ir_id: str | None = None
 
     def __post_init__(self) -> None:
         unknown = [p for p in self.priority if p not in _VALID_PRIORITIES]
@@ -314,11 +318,15 @@ def place_labels(
             candidate_bbox = _bbox_from_center(center, label_size)
             if any(_overlaps(candidate_bbox, b, margin) for b in occupied):
                 continue
+            label_ir_id = (
+                f"label_{request.ir_id}" if request.ir_id is not None else None
+            )
             out.append(LayoutEntry(
                 primitive=_label_primitive,
                 args=(request.text, center),
                 kwargs=label_kwargs,
                 position=(0.0, 0.0),
+                ir_id=label_ir_id,
             ))
             occupied.append(candidate_bbox)
             placed = True

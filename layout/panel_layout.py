@@ -270,6 +270,7 @@ def layout_panel(
                 args=(panel.title, px, py, pw, ph),
                 kwargs={"params": params},
                 position=(0.0, 0.0),
+                ir_id=f"{panel.id}_chrome",
             ))
 
         # Sub-engines operate in their own (0, 0)-origin coordinate space

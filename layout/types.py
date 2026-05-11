@@ -12,8 +12,13 @@ import svgwrite.container
 
 
 class LayoutEntry(NamedTuple):
-    """One unit of work for the renderer: a primitive call + its position."""
+    """One unit of work for the renderer: a primitive call + its position.
+
+    ir_id: raw IR id for tagging the emitted SVG element (D1). None for
+    synthetic chrome (panel borders, etc.) that has no IR counterpart.
+    """
     primitive: Callable[..., svgwrite.container.Group]
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
     position: tuple[float, float]
+    ir_id: str | None = None

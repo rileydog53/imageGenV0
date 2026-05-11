@@ -363,8 +363,10 @@ def layout_pathway(
     arrow_gap = float(params["pathway_arrow_gap"])
     entity_by_id = {e.id: e for e in figure.entities}
 
-    def _entry(primitive: Callable, args: tuple, kwargs: dict) -> LayoutEntry:
-        return LayoutEntry(primitive, args, kwargs, position=(0.0, 0.0))
+    def _entry(
+        primitive: Callable, args: tuple, kwargs: dict, ir_id: str | None = None
+    ) -> LayoutEntry:
+        return LayoutEntry(primitive, args, kwargs, position=(0.0, 0.0), ir_id=ir_id)
 
     entries: list[LayoutEntry] = []
 
@@ -376,6 +378,7 @@ def layout_pathway(
             _compartment_band,
             (c.label, ox, top, cw, bottom - top),
             {"params": params},
+            ir_id=c.id,
         ))
 
     for e in figure.entities:
@@ -383,6 +386,7 @@ def layout_pathway(
             ENTITY_TO_PRIMITIVE[e.type],
             (e.label, positions[e.id]),
             style_kwargs,
+            ir_id=e.id,
         ))
 
     for r in figure.relations:
@@ -397,6 +401,7 @@ def layout_pathway(
             RELATION_TO_ARROW[r.type],
             (start, end),
             style_kwargs,
+            ir_id=f"rel_{r.source}_{r.type.value}_{r.target}",
         ))
 
     return entries
@@ -465,5 +470,6 @@ def pathway_label_requests(
             anchor=midpoint,
             anchor_size=(2.0, 2.0),
             priority=priority,
+            ir_id=f"rel_{relation.source}_{relation.type.value}_{relation.target}",
         ))
     return requests
