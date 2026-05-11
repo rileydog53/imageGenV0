@@ -26,26 +26,10 @@ from primitives.chemistry import (
     render_reaction,
 )
 from primitives.proteins import receptor
+from tests._helpers import render_group_to_png
 
 FIGURES_DIR = Path(__file__).parent / "figures"
-
 CAFFEINE = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
-
-
-def _render_to_png(
-    group: svgwrite.container.Group,
-    filename: str,
-    canvas: tuple[int, int] = (400, 200),
-) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    dwg.add(group)
-    png_bytes = cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8"))
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(png_bytes)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -209,14 +193,14 @@ def test_molecule_overlays_receptor():
 # ---------------------------------------------------------------------------
 
 def test_chemistry_renders_to_png():
-    _render_to_png(render_molecule(CAFFEINE), "chemistry_caffeine.png",
+    render_group_to_png(render_molecule(CAFFEINE), "chemistry_caffeine.png",
                    canvas=(220, 170))
-    _render_to_png(
+    render_group_to_png(
         render_reaction(["CC(=O)O", "OCC"], ["CC(=O)OCC", "O"],
                         conditions={"above": "H+", "below": "Δ"}),
         "chemistry_reaction_esterification.png",
         canvas=(800, 200),
     )
     for name in ("carboxyl", "amine", "phosphate"):
-        _render_to_png(render_functional_group(name),
+        render_group_to_png(render_functional_group(name),
                        f"chemistry_fg_{name}.png", canvas=(200, 180))

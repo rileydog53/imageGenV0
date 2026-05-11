@@ -6,9 +6,6 @@ become the golden-image seeds for Phase 6 regression testing.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import cairosvg
 import svgwrite
 import svgwrite.container
 
@@ -19,28 +16,10 @@ from primitives.arrows import (
     reaction_arrow,
     translocation_arrow,
 )
+from tests._helpers import render_group_to_png
 
-FIGURES_DIR = Path(__file__).parent / "figures"
 START = (20.0, 60.0)
 END = (180.0, 60.0)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _render_to_png(group: svgwrite.container.Group, filename: str) -> Path:
-    """Wrap *group* in a 200×120 Drawing, export to SVG, convert to PNG, save."""
-    dwg = svgwrite.Drawing(size=("200px", "120px"))
-    # white background so the PNG is human-readable
-    dwg.add(dwg.rect(insert=(0, 0), size=("200px", "120px"), fill="white"))
-    dwg.add(group)
-    svg_bytes = dwg.tostring().encode("utf-8")
-    png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
-    out = FIGURES_DIR / filename
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out.write_bytes(png_bytes)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +90,6 @@ def test_arrows_render_to_png():
         ),
     }
     for filename, group in cases.items():
-        out = _render_to_png(group, filename)
+        out = render_group_to_png(group, filename, canvas=(200, 120))
         assert out.exists(), f"PNG not written: {out}"
         assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"

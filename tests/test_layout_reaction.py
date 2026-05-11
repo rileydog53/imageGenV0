@@ -1,10 +1,6 @@
 """Phase 3 Step 1 tests for layout/reaction_layout.py."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import cairosvg
 import pytest
 import svgwrite
 import svgwrite.container
@@ -19,32 +15,13 @@ from layout.reaction_layout import (
     layout_reaction,
 )
 from primitives.chemistry import render_reaction
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-FIGURES_DIR = Path(__file__).parent / "figures"
+from tests._helpers import load_fixture, render_group_to_png
 
 ESTERIFICATION_SMILES = {
     "acid": "CC(=O)O",
     "alcohol": "OCC",
     "ester": "CC(=O)OCC",
 }
-
-
-def _load_fixture(name: str) -> Figure:
-    return Figure.model_validate(
-        json.loads((FIXTURES_DIR / name).read_text())
-    )
-
-
-def _render_to_png(group, filename: str, canvas: tuple[int, int] = (800, 200)) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    dwg.add(group)
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8")))
-    return out
 
 
 def _make_minimal_reaction(
@@ -72,7 +49,7 @@ def _make_minimal_reaction(
 # ---------------------------------------------------------------------------
 
 def test_layout_returns_single_entry():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
     assert len(entries) == 1
     assert isinstance(entries[0], LayoutEntry)
@@ -80,7 +57,7 @@ def test_layout_returns_single_entry():
 
 
 def test_layout_classifies_reactants_and_products():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
     reactants_smiles, products_smiles = entries[0].args
     assert reactants_smiles == ["CC(=O)O", "OCC"]
@@ -88,21 +65,21 @@ def test_layout_classifies_reactants_and_products():
 
 
 def test_layout_extracts_conditions():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
     conditions = entries[0].kwargs["conditions"]
     assert conditions == {"above": "H2SO4 (cat.)", "below": "reflux, 80°C"}
 
 
 def test_layout_uses_default_position_and_molecule_size():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
     assert entries[0].position == DEFAULT_LAYOUT_PARAMS["reaction_origin"]
     assert entries[0].kwargs["molecule_size"] == DEFAULT_LAYOUT_PARAMS["reaction_molecule_size"]
 
 
 def test_layout_overrides_layout_params():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(
         fig,
         smiles_map=ESTERIFICATION_SMILES,
@@ -114,7 +91,7 @@ def test_layout_overrides_layout_params():
 
 
 def test_layout_forwards_style_dict():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     style = {"chem_bond_stroke": "#FF0000"}
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES, style_dict=style)
     assert entries[0].kwargs["style_dict"] == style
@@ -157,7 +134,7 @@ def test_layout_reagents_only():
 # ---------------------------------------------------------------------------
 
 def test_layout_missing_smiles_raises():
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     with pytest.raises(ValueError, match="smiles_map is missing"):
         layout_reaction(fig, smiles_map={"acid": "CC(=O)O"})  # missing alcohol + ester
 
@@ -205,7 +182,7 @@ def test_layout_intermediate_raises_not_implemented():
 def test_layout_executes_to_group():
     """Calling the LayoutEntry's primitive with its args/kwargs must produce
     a non-empty Group — proves the engine emits valid renderer instructions."""
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
     e = entries[0]
     g = e.primitive(*e.args, **e.kwargs)
@@ -219,7 +196,7 @@ def test_layout_renders_to_png():
     """Golden seed for Phase 3 → primitives end-to-end integration. Eyeball
     criterion: matches tests/figures/chemistry_reaction_esterification.png
     since v1 layout is a thin translation."""
-    fig = _load_fixture("simple_reaction.json")
+    fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
     e = entries[0]
     g = e.primitive(*e.args, **e.kwargs)
@@ -227,6 +204,6 @@ def test_layout_renders_to_png():
     px, py = e.position
     wrapped = svgwrite.container.Group(transform=f"translate({px},{py})")
     wrapped.add(g)
-    out = _render_to_png(wrapped, "layout_reaction_esterification.png",
-                         canvas=(800, 200))
+    out = render_group_to_png(wrapped, "layout_reaction_esterification.png",
+                              canvas=(800, 200))
     assert out.exists() and out.stat().st_size > 0

@@ -1,10 +1,6 @@
 """Phase 3 Step 3 tests for layout/panel_layout.py."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import cairosvg
 import pytest
 import svgwrite
 import svgwrite.container
@@ -23,36 +19,7 @@ from layout.panel_layout import (
 )
 from layout.pathway_layout import layout_pathway
 from layout.reaction_layout import LayoutEntry, layout_reaction
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _load_fixture(name: str) -> Figure:
-    return Figure.model_validate(json.loads((FIXTURES_DIR / name).read_text()))
-
-
-def _render_to_png(
-    entries: list[LayoutEntry],
-    filename: str,
-    canvas: tuple[int, int] = (1200, 600),
-) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    for e in entries:
-        g = e.primitive(*e.args, **e.kwargs)
-        px, py = e.position
-        if (px, py) != (0.0, 0.0):
-            wrap = svgwrite.container.Group(transform=f"translate({px},{py})")
-            wrap.add(g)
-            dwg.add(wrap)
-        else:
-            dwg.add(g)
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8")))
-    return out
+from tests._helpers import load_fixture, render_entries_to_png
 
 
 def _chrome_entries(entries: list[LayoutEntry]) -> list[LayoutEntry]:
@@ -111,7 +78,7 @@ def test_nested_panels_raise_not_implemented():
 # ---------------------------------------------------------------------------
 
 def test_grid_extent_three_in_a_row():
-    fig = _load_fixture("three_panel_workflow.json")
+    fig = load_fixture("three_panel_workflow.json")
     rows, cols = _grid_extent(fig)
     assert (rows, cols) == (1, 3)
 
@@ -126,7 +93,7 @@ def test_cell_size_partitions_canvas_minus_margins_and_gutters():
 
 
 def test_panel_rects_do_not_overlap():
-    fig = _load_fixture("three_panel_workflow.json")
+    fig = load_fixture("three_panel_workflow.json")
     entries = layout_panel(fig)
     chromes = _chrome_entries(entries)
     rects = [(e.args[1], e.args[2], e.args[3], e.args[4]) for e in chromes]
@@ -253,7 +220,7 @@ def test_style_dict_forwarded_to_subengines():
 # ---------------------------------------------------------------------------
 
 def test_entries_are_executable():
-    fig = _load_fixture("three_panel_workflow.json")
+    fig = load_fixture("three_panel_workflow.json")
     entries = layout_panel(fig)
     for entry in entries:
         g = entry.primitive(*entry.args, **entry.kwargs)
@@ -270,7 +237,7 @@ def test_default_layout_params_keys_are_namespaced():
 # ---------------------------------------------------------------------------
 
 def test_render_three_panel_workflow_to_png():
-    fig = _load_fixture("three_panel_workflow.json")
+    fig = load_fixture("three_panel_workflow.json")
     entries = layout_panel(fig)
-    out = _render_to_png(entries, "layout_panel_three_workflow.png")
+    out = render_entries_to_png(entries, "layout_panel_three_workflow.png", canvas=(1200, 600))
     assert out.exists() and out.stat().st_size > 0

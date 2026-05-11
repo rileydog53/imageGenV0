@@ -1,9 +1,6 @@
 """Phase 2 Step 7 tests for primitives/lab_equipment.py."""
 from __future__ import annotations
 
-from pathlib import Path
-
-import cairosvg
 import pytest
 import svgwrite
 import svgwrite.container
@@ -22,24 +19,7 @@ from primitives.lab_equipment import (
     tube,
     well_plate,
 )
-
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _render_to_png(
-    group: svgwrite.container.Group,
-    filename: str,
-    canvas: tuple[int, int] = (300, 200),
-) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    dwg.add(group)
-    png_bytes = cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8"))
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(png_bytes)
-    return out
+from tests._helpers import render_group_to_png
 
 
 # ---------------------------------------------------------------------------
@@ -228,17 +208,17 @@ def test_style_override_does_not_crash():
 # ---------------------------------------------------------------------------
 
 def test_lab_equipment_renders_to_png():
-    _render_to_png(well_plate(highlights={(0, 0): "#42A5F5", (3, 5): "#EF5350",
+    render_group_to_png(well_plate(highlights={(0, 0): "#42A5F5", (3, 5): "#EF5350",
                                            (7, 11): "#66BB6A"}),
                    "lab_well_plate_96.png", canvas=(220, 160))
-    _render_to_png(well_plate(rows=16, cols=24),
+    render_group_to_png(well_plate(rows=16, cols=24),
                    "lab_well_plate_384.png", canvas=(360, 250))
     for t in ("eppendorf", "falcon", "pcr"):
-        _render_to_png(tube(type=t, label=t, contents_color="#FFC107"),
+        render_group_to_png(tube(type=t, label=t, contents_color="#FFC107"),
                        f"lab_tube_{t}.png", canvas=(80, 120))
-    _render_to_png(pipette(volume="200 uL"),
+    render_group_to_png(pipette(volume="200 uL"),
                    "lab_pipette.png", canvas=(120, 130))
-    _render_to_png(
+    render_group_to_png(
         gel_full(
             lanes=[[(0.2, 0.9), (0.5, 0.6)],
                    [(0.3, 0.8), (0.55, 0.5), (0.75, 0.3)],
@@ -250,13 +230,13 @@ def test_lab_equipment_renders_to_png():
         canvas=(220, 130),
     )
     for s in ("light", "fluorescence", "em"):
-        _render_to_png(microscope(style=s, minimal=False),
+        render_group_to_png(microscope(style=s, minimal=False),
                        f"lab_microscope_{s}.png", canvas=(100, 100))
-    _render_to_png(mouse(strain_label="C57BL/6"),
+    render_group_to_png(mouse(strain_label="C57BL/6"),
                    "lab_mouse.png", canvas=(140, 80))
-    _render_to_png(human_figure(minimal=True),
+    render_group_to_png(human_figure(minimal=True),
                    "lab_human_minimal.png", canvas=(80, 90))
-    _render_to_png(human_figure(minimal=False),
+    render_group_to_png(human_figure(minimal=False),
                    "lab_human_silhouette.png", canvas=(80, 90))
-    _render_to_png(stick_figure_dog(),
+    render_group_to_png(stick_figure_dog(),
                    "lab_stick_figure_dog.png", canvas=(140, 100))

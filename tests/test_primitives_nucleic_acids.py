@@ -9,9 +9,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import cairosvg
 import svgwrite
 import svgwrite.container
 
@@ -21,26 +18,7 @@ from primitives.nucleic_acids import (
     dna_segment,
     rna_segment,
 )
-
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _render_to_png(
-    group: svgwrite.container.Group,
-    filename: str,
-    canvas: tuple[int, int] = (400, 200),
-) -> Path:
-    """Wrap *group* in a Drawing with white background, export to PNG, save."""
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    dwg.add(group)
-    svg_bytes = dwg.tostring().encode("utf-8")
-    png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
-    out = FIGURES_DIR / filename
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out.write_bytes(png_bytes)
-    return out
+from tests._helpers import render_group_to_png
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +160,7 @@ def _build_chromatin_composite() -> svgwrite.container.Group:
     return outer
 
 
-def test_nucleic_acids_render_to_png():
+def test_nucleic_acidsrender_group_to_png():
     """Render one PNG per variant; assert each file exists and is non-empty."""
     cases: dict[str, svgwrite.container.Group] = {
         "dna_double_helix.png":  dna_segment((20.0, 100.0), (380.0, 100.0)),
@@ -200,6 +178,6 @@ def test_nucleic_acids_render_to_png():
 
     for filename, group in cases.items():
         canvas = (400, 200) if "chromatin_composite" not in filename else (400, 210)
-        out = _render_to_png(group, filename, canvas=canvas)
+        out = render_group_to_png(group, filename, canvas=canvas)
         assert out.exists(), f"PNG not written: {out}"
         assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"

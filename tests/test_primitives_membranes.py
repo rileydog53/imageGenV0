@@ -11,9 +11,7 @@ Tests cover:
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
-import cairosvg
 import svgwrite
 import svgwrite.container
 
@@ -25,26 +23,7 @@ from primitives.membranes import (
     nuclear_envelope,
 )
 from primitives.proteins import gpcr, receptor
-
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _render_to_png(
-    group: svgwrite.container.Group,
-    filename: str,
-    canvas: tuple[int, int] = (300, 300),
-) -> Path:
-    """Wrap *group* in a Drawing with white background, export to PNG, save."""
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    dwg.add(group)
-    svg_bytes = dwg.tostring().encode("utf-8")
-    png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
-    out = FIGURES_DIR / filename
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out.write_bytes(png_bytes)
-    return out
+from tests._helpers import render_group_to_png
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +150,7 @@ def test_gpcr_anchored_to_membrane():
 # Render-to-PNG -- golden-image seeds for Phase 6
 # ---------------------------------------------------------------------------
 
-def test_membranes_render_to_png():
+def test_membranesrender_group_to_png():
     """Render one PNG per membrane variant; assert each file exists and is non-empty."""
     # Build all renderable groups
     outline_circle_group, circ_curve = cell_membrane_outline(
@@ -198,6 +177,6 @@ def test_membranes_render_to_png():
     }
 
     for filename, (group, canvas) in cases.items():
-        out = _render_to_png(group, filename, canvas=canvas)
+        out = render_group_to_png(group, filename, canvas=canvas)
         assert out.exists(), f"PNG not written: {out}"
         assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"

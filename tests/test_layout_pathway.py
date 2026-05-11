@@ -1,14 +1,11 @@
 """Phase 3 Step 2 tests for layout/pathway_layout.py."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import cairosvg
 import pytest
 import svgwrite
 import svgwrite.container
 
+from tests._helpers import load_fixture, render_entries_to_png
 from ir.schema import (
     Archetype, Compartment, CompartmentType, Entity, EntityType,
     Figure, Relation, RelationType,
@@ -24,36 +21,6 @@ from layout.pathway_layout import (
 )
 from layout.reaction_layout import LayoutEntry
 from primitives import arrows, proteins
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _load_fixture(name: str) -> Figure:
-    return Figure.model_validate(json.loads((FIXTURES_DIR / name).read_text()))
-
-
-def _render_to_png(
-    entries: list[LayoutEntry],
-    filename: str,
-    canvas: tuple[int, int] = (800, 600),
-) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    for e in entries:
-        g = e.primitive(*e.args, **e.kwargs)
-        px, py = e.position
-        if (px, py) != (0.0, 0.0):
-            wrap = svgwrite.container.Group(transform=f"translate({px},{py})")
-            wrap.add(g)
-            dwg.add(wrap)
-        else:
-            dwg.add(g)
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8")))
-    return out
 
 
 def _entity_entries(entries: list[LayoutEntry]) -> list[LayoutEntry]:
@@ -110,7 +77,7 @@ def test_empty_entities_raises():
 # ---------------------------------------------------------------------------
 
 def test_no_compartments_uses_implicit_band():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig)
     bands = _band_entries(entries)
     assert len(bands) == 1
@@ -119,7 +86,7 @@ def test_no_compartments_uses_implicit_band():
 
 
 def test_compartments_use_ir_declaration_order():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     bands = [_band_geom(b) for b in _band_entries(layout_pathway(fig))]
     assert [label for label, *_ in bands] == [
         "Extracellular", "Plasma membrane", "Cytoplasm"
@@ -129,7 +96,7 @@ def test_compartments_use_ir_declaration_order():
 
 
 def test_compartment_bands_partition_canvas():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     canvas_h = 600.0
     entries = layout_pathway(fig, layout_params={"pathway_canvas": (800.0, canvas_h)})
     bands = [_band_geom(b) for b in _band_entries(entries)]
@@ -143,7 +110,7 @@ def test_compartment_bands_partition_canvas():
 # ---------------------------------------------------------------------------
 
 def test_entities_snap_into_their_compartment_band():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     entries = layout_pathway(fig)
     bands_by_label: dict[str, tuple[float, float]] = {
         label: (y, y + h) for label, _, y, _, h in map(_band_geom, _band_entries(entries))
@@ -176,7 +143,7 @@ def test_isolated_entity_still_placed():
 
 
 def test_layout_is_deterministic():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     a = layout_pathway(fig)
     b = layout_pathway(fig)
     a_pos = [e.args for e in _entity_entries(a)]
@@ -213,26 +180,26 @@ def test_entity_type_routes_to_specific_primitive():
 # ---------------------------------------------------------------------------
 
 def test_layout_returns_layout_entries():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig)
     assert entries
     assert all(isinstance(e, LayoutEntry) for e in entries)
 
 
 def test_one_entity_entry_per_entity():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     entries = layout_pathway(fig)
     assert len(_entity_entries(entries)) == len(fig.entities)
 
 
 def test_relations_emit_layout_entries():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig)
     assert len(_arrow_entries(entries)) == len(fig.relations)
 
 
 def test_layout_entries_are_executable():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     entries = layout_pathway(fig)
     for entry in entries:
         g = entry.primitive(*entry.args, **entry.kwargs)
@@ -244,7 +211,7 @@ def test_layout_entries_are_executable():
 # ---------------------------------------------------------------------------
 
 def test_layout_params_override_seed_and_canvas():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     a = layout_pathway(fig, layout_params={"pathway_seed": 1})
     b = layout_pathway(fig, layout_params={"pathway_seed": 2})
     a_pos = [e.args[1] for e in _entity_entries(a)]
@@ -258,7 +225,7 @@ def test_layout_params_override_seed_and_canvas():
 
 
 def test_style_dict_forwarded_to_entity_and_arrow_primitives():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     style = {"protein_fill": "#FF0000"}
     entries = layout_pathway(fig, style_dict=style)
     for e in _entity_entries(entries) + _arrow_entries(entries):
@@ -268,14 +235,14 @@ def test_style_dict_forwarded_to_entity_and_arrow_primitives():
 def test_band_visual_overrides_via_layout_params():
     """Band visuals (fill/stroke/label) live in layout_params, not style_dict —
     layout_params overrides must reach _compartment_band."""
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig, layout_params={"pathway_band_fill": "#ABCDEF"})
     band = _band_entries(entries)[0]
     assert band.kwargs["params"]["pathway_band_fill"] == "#ABCDEF"
 
 
 def test_default_style_dict_not_forwarded_when_none():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig)
     for e in _entity_entries(entries) + _arrow_entries(entries):
         assert "style_dict" not in e.kwargs
@@ -333,7 +300,7 @@ def test_arrow_endpoints_are_outside_entity_bboxes():
     never at an entity center where they'd overlap the entity's label.
     Uses the NF-κB fixture, which has two distinct entities sharing the
     label 'NF-κB' — checks must key by entity id, not label."""
-    fig = _load_fixture("multi_compartment_translocation.json")
+    fig = load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
 
     # The order of _entity_entries(entries) matches figure.entities order.
@@ -365,7 +332,7 @@ def test_arrow_endpoints_are_outside_entity_bboxes():
 
 
 def test_arrow_gap_is_overridable():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     tight = layout_pathway(fig, layout_params={"pathway_arrow_gap": 0.0})
     loose = layout_pathway(fig, layout_params={"pathway_arrow_gap": 20.0})
     tight_first = _arrow_entries(tight)[0].args
@@ -378,21 +345,21 @@ def test_arrow_gap_is_overridable():
 # ---------------------------------------------------------------------------
 
 def test_render_mapk_cascade_to_png():
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig)
-    out = _render_to_png(entries, "layout_pathway_mapk.png")
+    out = render_entries_to_png(entries, "layout_pathway_mapk.png")
     assert out.exists() and out.stat().st_size > 0
 
 
 def test_render_gpcr_signaling_to_png():
-    fig = _load_fixture("gpcr_signaling.json")
+    fig = load_fixture("gpcr_signaling.json")
     entries = layout_pathway(fig)
-    out = _render_to_png(entries, "layout_pathway_gpcr.png")
+    out = render_entries_to_png(entries, "layout_pathway_gpcr.png")
     assert out.exists() and out.stat().st_size > 0
 
 
 def test_render_nfkb_translocation_to_png():
-    fig = _load_fixture("multi_compartment_translocation.json")
+    fig = load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
-    out = _render_to_png(entries, "layout_pathway_nfkb.png")
+    out = render_entries_to_png(entries, "layout_pathway_nfkb.png")
     assert out.exists() and out.stat().st_size > 0

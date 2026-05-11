@@ -2,12 +2,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-import cairosvg
 import pytest
-import svgwrite
-import svgwrite.container
 from pydantic import ValidationError
 
 from ir.schema import Figure
@@ -21,40 +17,11 @@ from styles.loader import (
     load_preset_full,
     load_style,
 )
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-FIGURES_DIR = Path(__file__).parent / "figures"
+from tests._helpers import load_fixture, render_entries_to_png
 
 # Map from oxidation_reaction.json entity ids → SMILES (kept here, not
 # in the IR; matches the smiles_map convention from layout_reaction).
 _OXIDATION_SMILES = {"alcohol": "CCO", "aldehyde": "CC=O"}
-
-
-def _load_fixture(name: str) -> Figure:
-    return Figure.model_validate(json.loads((FIXTURES_DIR / name).read_text()))
-
-
-def _render_to_png(
-    entries: list[LayoutEntry],
-    filename: str,
-    canvas: tuple[int, int] = (800, 600),
-) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    for e in entries:
-        g = e.primitive(*e.args, **e.kwargs)
-        px, py = e.position
-        if (px, py) != (0.0, 0.0):
-            wrap = svgwrite.container.Group(transform=f"translate({px},{py})")
-            wrap.add(g)
-            dwg.add(wrap)
-        else:
-            dwg.add(g)
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8")))
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -199,17 +166,17 @@ def test_acs_has_monochrome_protein_fills():
 
 @pytest.mark.parametrize("preset", ["cell_press", "nature", "acs"])
 def test_render_mapk_with_preset(preset):
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     style = load_style(preset)
     entries = layout_pathway(fig, style_dict=style)
-    out = _render_to_png(entries, f"style_{preset}_mapk.png")
+    out = render_entries_to_png(entries, f"style_{preset}_mapk.png")
     assert out.exists() and out.stat().st_size > 0
 
 
 @pytest.mark.parametrize("preset", ["cell_press", "nature", "acs"])
 def test_render_oxidation_with_preset(preset):
-    fig = _load_fixture("oxidation_reaction.json")
+    fig = load_fixture("oxidation_reaction.json")
     style = load_style(preset)
     entries = layout_reaction(fig, smiles_map=_OXIDATION_SMILES, style_dict=style)
-    out = _render_to_png(entries, f"style_{preset}_oxidation.png")
+    out = render_entries_to_png(entries, f"style_{preset}_oxidation.png")
     assert out.exists() and out.stat().st_size > 0

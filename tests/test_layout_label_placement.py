@@ -1,10 +1,6 @@
 """Phase 3 Step 4 tests for layout/label_placement.py."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import cairosvg
 import pytest
 import svgwrite
 import svgwrite.container
@@ -25,36 +21,7 @@ from layout.pathway_layout import (
 )
 from layout.reaction_layout import LayoutEntry
 from primitives import proteins
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _load_fixture(name: str) -> Figure:
-    return Figure.model_validate(json.loads((FIXTURES_DIR / name).read_text()))
-
-
-def _render_to_png(
-    entries: list[LayoutEntry],
-    filename: str,
-    canvas: tuple[int, int] = (800, 600),
-) -> Path:
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    for e in entries:
-        g = e.primitive(*e.args, **e.kwargs)
-        px, py = e.position
-        if (px, py) != (0.0, 0.0):
-            wrap = svgwrite.container.Group(transform=f"translate({px},{py})")
-            wrap.add(g)
-            dwg.add(wrap)
-        else:
-            dwg.add(g)
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out = FIGURES_DIR / filename
-    out.write_bytes(cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8")))
-    return out
+from tests._helpers import load_fixture, render_entries_to_png
 
 
 def _entity_entry(label: str, position: tuple[float, float]) -> LayoutEntry:
@@ -197,7 +164,7 @@ def test_estimate_text_bbox_monotonic():
 
 def test_pathway_label_requests_emits_one_per_labeled_relation():
     """nfkb fixture has 2 relations with labels and 1 without."""
-    fig = _load_fixture("multi_compartment_translocation.json")
+    fig = load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
     requests = pathway_label_requests(fig, entries)
     expected = sum(1 for r in fig.relations if r.label)
@@ -208,7 +175,7 @@ def test_pathway_label_requests_emits_one_per_labeled_relation():
 
 
 def test_pathway_label_requests_anchors_at_arrow_midpoint():
-    fig = _load_fixture("multi_compartment_translocation.json")
+    fig = load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
     requests = pathway_label_requests(fig, entries)
     arrow_entries = [e for e in entries if e.primitive in RELATION_TO_ARROW.values()]
@@ -220,7 +187,7 @@ def test_pathway_label_requests_anchors_at_arrow_midpoint():
 
 def test_pathway_label_requests_skips_blank_labels():
     """Relation.label = None or "" emits no LabelRequest."""
-    fig = _load_fixture("mapk_cascade.json")
+    fig = load_fixture("mapk_cascade.json")
     entries = layout_pathway(fig)
     requests = pathway_label_requests(fig, entries)
     # mapk_cascade fixture has no relation labels.
@@ -230,7 +197,7 @@ def test_pathway_label_requests_skips_blank_labels():
 
 def test_pathway_integration_renders_relation_labels():
     """Full pipeline: layout_pathway → pathway_label_requests → place_labels."""
-    fig = _load_fixture("multi_compartment_translocation.json")
+    fig = load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
     requests = pathway_label_requests(fig, entries)
     out = place_labels(entries, requests)
@@ -244,10 +211,10 @@ def test_pathway_integration_renders_relation_labels():
 # Render-to-PNG (golden seed)
 # ---------------------------------------------------------------------------
 
-def test_label_placement_render_to_png():
-    fig = _load_fixture("multi_compartment_translocation.json")
+def test_label_placementrender_entries_to_png():
+    fig = load_fixture("multi_compartment_translocation.json")
     entries = layout_pathway(fig)
     requests = pathway_label_requests(fig, entries)
     composed = place_labels(entries, requests)
-    out = _render_to_png(composed, "label_placement_nfkb.png")
+    out = render_entries_to_png(composed, "label_placement_nfkb.png")
     assert out.exists() and out.stat().st_size > 0

@@ -11,9 +11,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import cairosvg
 import svgwrite
 import svgwrite.container
 
@@ -25,26 +22,7 @@ from primitives.cells import (
 )
 from primitives.membranes import MembraneCurve
 from primitives.proteins import receptor
-
-FIGURES_DIR = Path(__file__).parent / "figures"
-
-
-def _render_to_png(
-    group: svgwrite.container.Group,
-    filename: str,
-    canvas: tuple[int, int] = (320, 320),
-) -> Path:
-    """Wrap *group* in a Drawing with white background, export to PNG, save."""
-    w, h = canvas
-    dwg = svgwrite.Drawing(size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0, 0), size=(f"{w}px", f"{h}px"), fill="white"))
-    dwg.add(group)
-    svg_bytes = dwg.tostring().encode("utf-8")
-    png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
-    out = FIGURES_DIR / filename
-    FIGURES_DIR.mkdir(exist_ok=True)
-    out.write_bytes(png_bytes)
-    return out
+from tests._helpers import render_group_to_png
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +199,6 @@ def test_cells_render_to_png():
     }
 
     for filename, (group, canvas) in cases.items():
-        out = _render_to_png(group, filename, canvas=canvas)
+        out = render_group_to_png(group, filename, canvas=canvas)
         assert out.exists(), f"PNG not written: {out}"
         assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"
