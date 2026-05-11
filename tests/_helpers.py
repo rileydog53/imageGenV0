@@ -24,7 +24,7 @@ import svgwrite
 import svgwrite.container
 
 from ir.schema import Figure
-from layout.reaction_layout import LayoutEntry
+from layout.types import LayoutEntry
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FIGURES_DIR = Path(__file__).parent / "figures"

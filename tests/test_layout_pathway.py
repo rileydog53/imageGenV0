@@ -19,7 +19,7 @@ from layout.pathway_layout import (
     _compartment_band,
     layout_pathway,
 )
-from layout.reaction_layout import LayoutEntry
+from layout.types import LayoutEntry
 from primitives import arrows, proteins
 
 

@@ -18,7 +18,8 @@ from layout.panel_layout import (
     layout_panel,
 )
 from layout.pathway_layout import layout_pathway
-from layout.reaction_layout import LayoutEntry, layout_reaction
+from layout.reaction_layout import layout_reaction
+from layout.types import LayoutEntry
 from tests._helpers import load_fixture, render_entries_to_png
 
 

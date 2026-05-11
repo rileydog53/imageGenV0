@@ -44,11 +44,12 @@ Phase 5 coupling:
 """
 from __future__ import annotations
 
-from typing import Any, Callable, NamedTuple
+from typing import Any
 
 import svgwrite.container
 
 from ir.schema import Archetype, Figure, ReactionConditions
+from layout.types import LayoutEntry
 from primitives.chemistry import render_reaction
 
 
@@ -61,14 +62,6 @@ DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
     "reaction_molecule_size": (140, 100),   # forwarded to render_reaction
     "reaction_origin":        (0.0, 0.0),   # top-left of the reaction Group
 }
-
-
-class LayoutEntry(NamedTuple):
-    """One unit of work for the renderer: a primitive call + its position."""
-    primitive: Callable[..., svgwrite.container.Group]
-    args: tuple[Any, ...]
-    kwargs: dict[str, Any]
-    position: tuple[float, float]
 
 
 # ---------------------------------------------------------------------------

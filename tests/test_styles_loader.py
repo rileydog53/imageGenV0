@@ -8,7 +8,8 @@ from pydantic import ValidationError
 
 from ir.schema import Figure
 from layout.pathway_layout import layout_pathway
-from layout.reaction_layout import LayoutEntry, layout_reaction
+from layout.reaction_layout import layout_reaction
+from layout.types import LayoutEntry
 from styles.loader import (
     DEFAULT_PRESET,
     PRESET_DIR,

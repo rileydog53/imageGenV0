@@ -68,7 +68,7 @@ from ir.schema import (
     Figure,
     RelationType,
 )
-from layout.reaction_layout import LayoutEntry
+from layout.types import LayoutEntry
 from primitives import arrows, proteins
 
 

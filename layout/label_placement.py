@@ -60,7 +60,7 @@ from typing import Any
 
 import svgwrite.container
 
-from layout.reaction_layout import LayoutEntry
+from layout.types import LayoutEntry
 from primitives import proteins
 
 

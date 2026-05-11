@@ -11,9 +11,9 @@ from ir.schema import (
 )
 from layout.reaction_layout import (
     DEFAULT_LAYOUT_PARAMS,
-    LayoutEntry,
     layout_reaction,
 )
+from layout.types import LayoutEntry
 from primitives.chemistry import render_reaction
 from tests._helpers import load_fixture, render_group_to_png
 

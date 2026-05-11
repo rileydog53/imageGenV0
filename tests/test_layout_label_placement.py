@@ -19,7 +19,7 @@ from layout.pathway_layout import (
     layout_pathway,
     pathway_label_requests,
 )
-from layout.reaction_layout import LayoutEntry
+from layout.types import LayoutEntry
 from primitives import proteins
 from tests._helpers import load_fixture, render_entries_to_png
 
