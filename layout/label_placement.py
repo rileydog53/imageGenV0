@@ -25,10 +25,8 @@ Algorithm:
   Force-directed placement is a v2 stretch — flagged in the SKILL plan.
 
 Bbox sources:
-  - Entity entries: looked up via `_ENTITY_BBOX` from `pathway_layout`
-    (a small per-`EntityType` table). Cross-module import is private but
-    documented; promoting `_ENTITY_BBOX` to a shared `layout/_geom.py`
-    is a deferred cleanup flagged in `~/Desktop/TODO.txt`.
+  - Entity entries: looked up via `ENTITY_BBOX` from `layout._geom`
+    (a small per-`EntityType` table shared with `pathway_layout`).
   - Compartment bands and panel chrome: treated as no-bbox. These
     primitives are full-width decorative backgrounds, not obstructions —
     labels are expected to render on top of them. Including them would
@@ -60,6 +58,7 @@ from typing import Any
 
 import svgwrite.container
 
+from layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
 from layout.types import LayoutEntry
 from primitives import proteins
 
@@ -217,12 +216,10 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     cx, cy = center
     # Reverse-lookup the bbox via the per-EntityType table. Multiple
     # EntityTypes can share a primitive — pick the largest bbox among
-    # them so collision checks stay conservative. Lazy import breaks the
-    # `pathway_layout → label_placement` cycle for `pathway_label_requests`.
-    from layout import pathway_layout  # noqa: PLC0415
+    # them so collision checks stay conservative.
     candidates = [
-        pathway_layout._ENTITY_BBOX[t]
-        for t, p in pathway_layout.ENTITY_TO_PRIMITIVE.items()
+        ENTITY_BBOX[t]
+        for t, p in ENTITY_TO_PRIMITIVE.items()
         if p is entry.primitive
     ]
     if not candidates:

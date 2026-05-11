@@ -10,11 +10,10 @@ from ir.schema import (
     Archetype, Compartment, CompartmentType, Entity, EntityType,
     Figure, Relation, RelationType,
 )
+from layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
 from layout.pathway_layout import (
     DEFAULT_LAYOUT_PARAMS,
-    ENTITY_TO_PRIMITIVE,
     RELATION_TO_ARROW,
-    _ENTITY_BBOX,
     _bbox_exit_point,
     _compartment_band,
     layout_pathway,
@@ -322,7 +321,7 @@ def test_arrow_endpoints_are_outside_entity_bboxes():
         # offset alone need not exceed half + gap.
         for eid, point in ((relation.source, start), (relation.target, end)):
             cx, cy = centers_by_id[eid]
-            w, h = _ENTITY_BBOX[type_by_id[eid]]
+            w, h = ENTITY_BBOX[type_by_id[eid]]
             on_x_edge = abs(point[0] - cx) >= w / 2 - 1e-6
             on_y_edge = abs(point[1] - cy) >= h / 2 - 1e-6
             assert on_x_edge or on_y_edge, (

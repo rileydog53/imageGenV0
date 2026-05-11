@@ -68,8 +68,9 @@ from ir.schema import (
     Figure,
     RelationType,
 )
+from layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
 from layout.types import LayoutEntry
-from primitives import arrows, proteins
+from primitives import arrows
 
 
 # ---------------------------------------------------------------------------
@@ -92,43 +93,9 @@ DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
 }
 
 
-# Per-EntityType bounding boxes (w, h), tracking each primitive's default
-# size in `primitives/proteins.py`. Used to inset arrow endpoints to the
-# entity's perimeter so shafts/heads never overlap entity labels. Keep in
-# sync if a primitive's default size changes; Phase 4's master preset will
-# centralise this so the table can come from style instead.
-_ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
-    EntityType.PROTEIN:    (60.0, 30.0),
-    EntityType.LIGAND:     (60.0, 30.0),
-    EntityType.RECEPTOR:   (28.0, 60.0),
-    EntityType.KINASE:     (70.0, 32.0),
-    EntityType.GENE:       (60.0, 30.0),
-    EntityType.METABOLITE: (60.0, 30.0),
-    EntityType.CELL:       (60.0, 30.0),
-    EntityType.ORGANELLE:  (60.0, 30.0),
-    EntityType.EQUIPMENT:  (60.0, 30.0),
-    EntityType.SAMPLE:     (60.0, 30.0),
-    EntityType.GENERIC:    (60.0, 30.0),
-}
-
-
 # ---------------------------------------------------------------------------
 # Dispatch tables (public so tests + future archetypes can introspect them).
 # ---------------------------------------------------------------------------
-
-ENTITY_TO_PRIMITIVE: dict[EntityType, Callable[..., svgwrite.container.Group]] = {
-    EntityType.PROTEIN:    proteins.generic_protein,
-    EntityType.LIGAND:     proteins.generic_protein,
-    EntityType.RECEPTOR:   proteins.receptor,
-    EntityType.KINASE:     proteins.kinase,
-    EntityType.GENE:       proteins.generic_protein,
-    EntityType.METABOLITE: proteins.generic_protein,
-    EntityType.CELL:       proteins.generic_protein,
-    EntityType.ORGANELLE:  proteins.generic_protein,
-    EntityType.EQUIPMENT:  proteins.generic_protein,
-    EntityType.SAMPLE:     proteins.generic_protein,
-    EntityType.GENERIC:    proteins.generic_protein,
-}
 
 RELATION_TO_ARROW: dict[RelationType, Callable[..., svgwrite.container.Group]] = {
     RelationType.ACTIVATES:      arrows.activation_arrow,
@@ -422,8 +389,8 @@ def layout_pathway(
         src = entity_by_id[r.source]
         tgt = entity_by_id[r.target]
         start, end = _arrow_endpoints(
-            positions[r.source], _ENTITY_BBOX[src.type],
-            positions[r.target], _ENTITY_BBOX[tgt.type],
+            positions[r.source], ENTITY_BBOX[src.type],
+            positions[r.target], ENTITY_BBOX[tgt.type],
             arrow_gap,
         )
         entries.append(_entry(
