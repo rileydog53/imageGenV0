@@ -23,11 +23,11 @@ use cases.
 
 | # | Item | Source | Priority |
 |---|---|---|---|
-| C1 | Promote `LayoutEntry` from `layout/reaction_layout.py` to `layout/__init__.py` (or `layout/types.py`). Currently 3+ engines reach into a sibling module's "private" symbol. | TODO.txt §pathway DONE; §reaction DONE; `pathway_layout.py:11` | **High** |
-| C2 | Promote `_ENTITY_BBOX` (and the `pathway_layout.ENTITY_TO_PRIMITIVE` reverse-lookup pattern in `label_placement._entry_bbox`) to a shared `layout/_geom.py`. | `label_placement.py:30`; TODO.txt §pathway DONE | **High** |
-| C3 | Promote `_load_fixture` and `_render_to_png` test helpers to `tests/conftest.py`. Currently duplicated across 9+ test files. | TODO.txt §pathway DONE; §reaction DONE | **Medium** |
+| ~~C1~~ | ✅ **Resolved 2026-05-11 (`b77c5d7`):** `LayoutEntry` lives in `layout/types.py`, re-exported from `layout/__init__.py`. | TODO.txt §pathway DONE; §reaction DONE | ~~**High**~~ |
+| ~~C2~~ | ✅ **Resolved 2026-05-11 (`02ab92c`):** `ENTITY_BBOX` (renamed from `_ENTITY_BBOX`) and `ENTITY_TO_PRIMITIVE` live in `layout/_geom.py`. Lazy import in `label_placement.py` removed. | `label_placement.py:30`; TODO.txt §pathway DONE | ~~**High**~~ |
+| ~~C3~~ | ✅ **Resolved 2026-05-11 (`1a99207`):** `load_fixture`, `render_entries_to_png`, and `render_group_to_png` live in `tests/_helpers.py` (not `conftest.py` — `tests/` is a package; conftest is reserved for pytest fixtures). Migrated 13 test files. | TODO.txt §pathway DONE; §reaction DONE | ~~**Medium**~~ |
 | C4 | Rename module-level `DEFAULT_LAYOUT_PARAMS` symbols (clash across `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) to engine-specific names like `PATHWAY_DEFAULT_PARAMS` if star-imports ever become necessary. | TODO.txt §pathway DONE | **Low** |
-| C5 | `_ENTITY_BBOX` table tracks each protein primitive's *default* size — keep in sync if a primitive's default size changes. Originally tagged "lift during Phase 4"; reclassified as layout cleanup (presets are aesthetic; bbox is geometric). Lift via the same cleanup commit as L9 if either becomes painful. | `pathway_layout.py:95-99`; `phase4-style-presets.md` reclassification | **Medium** |
+| C5 | `ENTITY_BBOX` table (now in `layout/_geom.py`) tracks each protein primitive's *default* size — keep in sync if a primitive's default size changes. Originally tagged "lift during Phase 4"; reclassified as layout cleanup (presets are aesthetic; bbox is geometric). Lift via the same cleanup commit as L9 if either becomes painful. | `layout/_geom.py`; `phase4-style-presets.md` reclassification | **Medium** |
 
 ---
 

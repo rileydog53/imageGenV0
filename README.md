@@ -10,8 +10,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 1. **[ROADMAP.md](ROADMAP.md)** (5 min) — Current phase/step, what's done, what's next, test count
 2. **[WORKFLOW.md](WORKFLOW.md)** (10 min) — The 3-role rhythm, GitHub PR process, how to structure your commits
-3. **`~/Desktop/TODO.txt`** `IN PROGRESS:` section — Your specific current task with acceptance criteria
-4. **Pattern file** — Read the completed module matching your phase (e.g., `primitives/proteins.py` for Phase 2 style)
+3. **[WORKFLOW_HABITS.md](WORKFLOW_HABITS.md)** (3 min) — Session start/end checklist, red flags, git hygiene, graduation signals
+4. **`~/Desktop/TODO.txt`** `IN PROGRESS:` section — Your specific current task with acceptance criteria
+5. **Pattern file** — Read the completed module matching your phase (e.g., `primitives/proteins.py` for Phase 2 style)
 
 ### Quick Context
 
@@ -48,6 +49,8 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 8 | Integration & polish | ⬜ Pending |
 
 Current test count: **263 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement + 25 styles_loader). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete. Phase 4 (style presets) complete: three JSON presets (`cell_press` default, `nature` Tol-palette, `acs` monochrome chemistry) loaded by Pydantic-validated `styles/loader.py`. `load_style(name) -> dict` returns the preset's sparse `overrides`; primitive `DEFAULT_STYLE` fills the rest. Phase 5 (renderer/compositor) next.
+
+**Pre–Phase 5 cleanup (2026-05-11):** `LayoutEntry` lives in `layout/types.py` (re-exported from `layout`); `ENTITY_BBOX` and `ENTITY_TO_PRIMITIVE` live in `layout/_geom.py`; test helpers (`load_fixture`, `render_entries_to_png`, `render_group_to_png`) live in `tests/_helpers.py`. Tags: `phase-4-complete`, `pre-phase-5-cleanup`.
 
 ## Plan
 
