@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from ir.schema import Archetype, Figure
 from render.compositor import (
@@ -122,14 +123,56 @@ def test_explicit_svg_format_accepted(tmp_path):
     assert _resolve_format(tmp_path / "x.svg", "svg") == "svg"
 
 
-def test_explicit_png_raises_not_implemented(tmp_path):
-    with pytest.raises(NotImplementedError, match="png"):
-        _resolve_format(tmp_path / "x.png", "png")
+def test_explicit_png_format_accepted(tmp_path):
+    assert _resolve_format(tmp_path / "x.png", "png") == "png"
 
 
-def test_explicit_pdf_raises_not_implemented(tmp_path):
-    with pytest.raises(NotImplementedError, match="pdf"):
-        _resolve_format(tmp_path / "x.pdf", "pdf")
+def test_explicit_pdf_format_accepted(tmp_path):
+    assert _resolve_format(tmp_path / "x.pdf", "pdf") == "pdf"
+
+
+# ---------------------------------------------------------------------------
+# Non-SVG output (Step 4: PNG + PDF via render/export.py)
+# ---------------------------------------------------------------------------
+
+
+def test_render_figure_png_end_to_end(tmp_path):
+    """`format='png'` writes a Pillow-readable PNG plus a sibling SVG."""
+    ir = load_fixture(MAPK)
+    out = render_figure(ir, tmp_path / "fig.png")
+    assert out == tmp_path / "fig.png"
+    assert out.exists()
+    assert (tmp_path / "fig.svg").exists(), "sibling SVG should be persisted"
+    with Image.open(out) as img:
+        assert img.format == "PNG"
+
+
+def test_render_figure_pdf_end_to_end(tmp_path):
+    """`format='pdf'` writes a real PDF plus a sibling SVG."""
+    ir = load_fixture(MAPK)
+    out = render_figure(ir, tmp_path / "fig.pdf")
+    assert out == tmp_path / "fig.pdf"
+    assert out.exists()
+    assert out.read_bytes().startswith(b"%PDF-")
+    assert (tmp_path / "fig.svg").exists(), "sibling SVG should be persisted"
+
+
+def test_render_figure_png_forwards_dpi(tmp_path):
+    """Higher `dpi` yields a larger PNG — proves the kwarg threads through."""
+    ir = load_fixture(MAPK)
+    lo = render_figure(ir, tmp_path / "lo.png", dpi=96)
+    hi = render_figure(ir, tmp_path / "hi.png", dpi=300)
+    with Image.open(lo) as a, Image.open(hi) as b:
+        assert b.width > a.width
+
+
+def test_render_figure_format_kwarg_overrides_suffix(tmp_path):
+    """Explicit `format='png'` on a non-png suffix still produces a PNG."""
+    ir = load_fixture(MAPK)
+    out = render_figure(ir, tmp_path / "fig.out", format="png")
+    assert out.exists()
+    with Image.open(out) as img:
+        assert img.format == "PNG"
 
 
 # ---------------------------------------------------------------------------
