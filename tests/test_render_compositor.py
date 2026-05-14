@@ -183,9 +183,11 @@ def test_reaction_scheme_missing_smiles_map_raises(tmp_path):
 
 
 def test_reaction_scheme_tagged_with_data_ir_id(tmp_path):
-    """D1: the reaction_0 entry's group must carry data-ir-id."""
-    # The _tag_group workaround (debug=False on the group + Drawing) is what
-    # lets data-ir-id survive svgwrite's strict validator; see compositor.py.
+    """D1: the reaction_0 entry's group must carry data-ir-id.
+
+    Guards the debug=False path in _tag_group / _write_svg — svgwrite's
+    strict validator rejects data-* attrs by default.
+    """
     ir = load_fixture(OXIDATION)
     out = render_figure(ir, tmp_path / "fig.svg", smiles_map=OXIDATION_SMILES)
     tagged = _svg_elements_with_attr(out, "data-ir-id")

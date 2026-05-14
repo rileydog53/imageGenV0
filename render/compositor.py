@@ -41,8 +41,15 @@ import svgwrite
 
 from ir.schema import Archetype, Figure
 from layout.label_placement import LabelPlacementError, place_labels
-from layout.pathway_layout import layout_pathway, pathway_label_requests
-from layout.reaction_layout import layout_reaction
+from layout.pathway_layout import (
+    DEFAULT_LAYOUT_PARAMS as PATHWAY_LAYOUT_PARAMS,
+    layout_pathway,
+    pathway_label_requests,
+)
+from layout.reaction_layout import (
+    DEFAULT_LAYOUT_PARAMS as REACTION_LAYOUT_PARAMS,
+    layout_reaction,
+)
 from layout.types import LayoutEntry
 from styles.loader import DEFAULT_PRESET, load_style
 
@@ -50,8 +57,6 @@ from styles.loader import DEFAULT_PRESET, load_style
 # Constants
 # ---------------------------------------------------------------------------
 
-_PATHWAY_CANVAS_PARAM = "pathway_canvas"
-_REACTION_CANVAS_PARAM = "reaction_canvas"
 _DEFAULT_CANVAS = (800.0, 600.0)
 
 # ---------------------------------------------------------------------------
@@ -214,11 +219,9 @@ def _canvas_size(ir: Figure, entries: list[LayoutEntry]) -> tuple[float, float]:
     Future steps can inspect entries or pass layout params through instead.
     """
     if ir.archetype == Archetype.PATHWAY:
-        from layout.pathway_layout import DEFAULT_LAYOUT_PARAMS
-        return DEFAULT_LAYOUT_PARAMS[_PATHWAY_CANVAS_PARAM]
+        return PATHWAY_LAYOUT_PARAMS["pathway_canvas"]
     if ir.archetype == Archetype.REACTION_SCHEME:
-        from layout.reaction_layout import DEFAULT_LAYOUT_PARAMS
-        return DEFAULT_LAYOUT_PARAMS[_REACTION_CANVAS_PARAM]
+        return REACTION_LAYOUT_PARAMS["reaction_canvas"]
     return _DEFAULT_CANVAS
 
 
