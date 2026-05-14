@@ -17,9 +17,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 ### Quick Context
 
-- **Phase:** 5 (Renderer/compositor) — Step 1 in progress (`compositor.py`, PATHWAY + SVG only)
-- **Tests:** 263 passing ✅
-- **Next task:** See `~/Desktop/TODO.txt` IN PROGRESS — Phase 5 Step 1 compositor skeleton
+- **Phase:** 5 (Renderer/compositor) — Step 3 done, Step 4 next (`render/export.py` PNG/PDF)
+- **Tests:** 304 passing ✅
+- **Next task:** See `~/Desktop/TODO.txt` IN PROGRESS — Phase 5 Step 4 export.py
 - **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
 - **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
 
@@ -44,12 +44,12 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
 | 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
-| 5 | Renderer & compositor | 🔄 In progress (Steps 1–2 done: PATHWAY + REACTION_SCHEME in `compositor.py`) |
+| 5 | Renderer & compositor | 🔄 In progress (Steps 1–3 done: PATHWAY + REACTION_SCHEME + PANEL in `compositor.py`) |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **296 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement + 25 styles_loader + 33 render_compositor). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete. Phase 4 (style presets) complete: three JSON presets (`cell_press` default, `nature` Tol-palette, `acs` monochrome chemistry) loaded by Pydantic-validated `styles/loader.py`. `load_style(name) -> dict` returns the preset's sparse `overrides`; primitive `DEFAULT_STYLE` fills the rest. Phase 5 Steps 1–2 complete: `render/compositor.py` with `render_figure` (PATHWAY + REACTION_SCHEME, SVG), IR-id tagging (D1), label auto-invoke (D3), watermark stub (D2), `smiles_map` threading per D4. Also: `LayoutEntry` gains optional `ir_id` field; all layout engines and `LabelRequest` backfilled.
+Current test count: **304 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement + 25 styles_loader + 41 render_compositor). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete. Phase 4 (style presets) complete. Phase 5 Steps 1–3 complete: `render/compositor.py` dispatches PATHWAY, REACTION_SCHEME, and multi-panel figures; IR-id tagging (D1) with panel-chain scoping (`p1__ras`); per-panel label auto-invoke (D3); watermark stub (D2); `smiles_map` threading per D4. `LayoutEntry` gains `panel_chain: tuple[str, ...]` field (backward-compatible default `()`). `_label_requests_fn` now covers all pathway-family archetypes.
 
 **Pre–Phase 5 cleanup (2026-05-11):** `LayoutEntry` lives in `layout/types.py` (re-exported from `layout`); `ENTITY_BBOX` and `ENTITY_TO_PRIMITIVE` live in `layout/_geom.py`; test helpers (`load_fixture`, `render_entries_to_png`, `render_group_to_png`) live in `tests/_helpers.py`. Tags: `phase-4-complete`, `pre-phase-5-cleanup`.
 
