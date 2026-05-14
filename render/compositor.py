@@ -219,9 +219,16 @@ def _tag_group(
     raw_ir_id: str,
     panel_chain: tuple[str, ...] = (),
 ) -> None:
-    """Set id (scoped) and data-ir-id (raw) on a Group in-place (D1)."""
-    group["id"] = _scoped_id(raw_ir_id, panel_chain)
-    group["data-ir-id"] = raw_ir_id
+    """Set id (scoped) and data-ir-id (raw) on a Group in-place (D1).
+
+    Disables debug-mode validation on the group before writing so that
+    data-* attributes (valid SVG 1.1 / HTML5 custom attributes) are not
+    rejected by svgwrite's strict built-in allowlist. The group's
+    children are unaffected — each element carries its own debug flag.
+    """
+    group._parameter.debug = False  # allow data-* attrs; debug is a read-only property
+    group.attribs["id"] = _scoped_id(raw_ir_id, panel_chain)
+    group.attribs["data-ir-id"] = raw_ir_id
 
 
 def _write_svg(
@@ -232,7 +239,10 @@ def _write_svg(
 ) -> None:
     """Execute layout entries into an svgwrite Drawing and write to disk."""
     w, h = canvas
-    dwg = svgwrite.Drawing(str(output_path), size=(w, h))
+    # debug=False disables svgwrite's strict SVG attribute validation so we
+    # can emit data-* attributes (data-ir-id) which are valid SVG 1.1/HTML5
+    # but not in svgwrite's built-in allowlist.
+    dwg = svgwrite.Drawing(str(output_path), size=(w, h), debug=False)
 
     for entry in entries:
         group: svgwrite.container.Group = entry.primitive(*entry.args, **entry.kwargs)
