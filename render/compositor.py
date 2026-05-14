@@ -16,6 +16,8 @@ Pipeline per call to `render_figure`:
 
 Archetype dispatch (v1 scope):
   - PATHWAY → `layout_pathway`; siblings: `pathway_label_requests`
+  - REACTION_SCHEME → `layout_reaction`; requires `smiles_map` kwarg (D4).
+    No label-request sibling — labels are baked into render_reaction.
   - All others raise `NotImplementedError` until subsequent steps wire them.
 
 IR-id tagging (D1):
@@ -25,8 +27,8 @@ IR-id tagging (D1):
     At depth 0 (no panel): scoped-id == raw-ir-id.
 
 Step coupling:
-  - Step 2 extends `_dispatch_layout` for REACTION_SCHEME + smiles_map.
-  - Step 3 extends it for PANEL dispatch (recursive sub-figure calls).
+  - Step 2 (done): REACTION_SCHEME + smiles_map dispatch.
+  - Step 3 extends `_dispatch_layout` for PANEL (recursive sub-figure calls).
   - Step 4 adds `render/export.py` and wires format != "svg" here.
 """
 from __future__ import annotations

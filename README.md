@@ -44,7 +44,7 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
 | 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
-| 5 | Renderer & compositor | 🔄 In progress (Step 1: `compositor.py` PATHWAY skeleton) |
+| 5 | Renderer & compositor | 🔄 In progress (Step 2: REACTION_SCHEME dispatch in `compositor.py`) |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
