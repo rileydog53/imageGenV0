@@ -15,10 +15,13 @@ Pipeline per call to `render_figure`:
      and write to `output_path`.
 
 Archetype dispatch (v1 scope):
+  - Multi-panel (`ir.panels` populated) → `layout_panel`; labels run
+    per-panel via `_place_labels_per_panel`. The flat `smiles_map` is
+    broadcast to all panels (entity ids are unique by IR validation).
   - PATHWAY → `layout_pathway`; siblings: `pathway_label_requests`
   - REACTION_SCHEME → `layout_reaction`; requires `smiles_map` kwarg (D4).
     No label-request sibling — labels are baked into render_reaction.
-  - All others raise `NotImplementedError` until subsequent steps wire them.
+  - All other leaf archetypes raise `NotImplementedError`.
 
 IR-id tagging (D1):
   Every emitted `<g>` carries:
@@ -28,7 +31,9 @@ IR-id tagging (D1):
 
 Step coupling:
   - Step 2 (done): REACTION_SCHEME + smiles_map dispatch.
-  - Step 3 extends `_dispatch_layout` for PANEL (recursive sub-figure calls).
+  - Step 3 (done): PANEL dispatch — panel-keyed `_dispatch_layout`
+    branch, per-panel `_place_labels_per_panel`, per-entry panel_chain
+    SVG-id scoping.
   - Step 4 adds `render/export.py` and wires format != "svg" here.
 """
 from __future__ import annotations
@@ -41,8 +46,13 @@ import svgwrite
 
 from ir.schema import Archetype, Figure
 from layout.label_placement import LabelPlacementError, place_labels
+from layout.panel_layout import (
+    DEFAULT_LAYOUT_PARAMS as PANEL_LAYOUT_PARAMS,
+    layout_panel,
+)
 from layout.pathway_layout import (
     DEFAULT_LAYOUT_PARAMS as PATHWAY_LAYOUT_PARAMS,
+    _PATHWAY_COMPATIBLE_ARCHETYPES,
     layout_pathway,
     pathway_label_requests,
 )
@@ -110,10 +120,13 @@ def render_figure(
     entries = _dispatch_layout(ir, style_dict, smiles_map)
 
     if labels:
-        label_fn = _label_requests_fn(ir.archetype)
-        if label_fn is not None:
-            requests = label_fn(ir, entries)
-            entries = place_labels(entries, requests, style_dict=style_dict)
+        if ir.panels:
+            entries = _place_labels_per_panel(ir, entries, style_dict)
+        else:
+            label_fn = _label_requests_fn(ir.archetype)
+            if label_fn is not None:
+                requests = label_fn(ir, entries)
+                entries = place_labels(entries, requests, style_dict=style_dict)
 
     if _needs_watermark(ir):
         entries = _inject_watermark(entries, ir, style_dict)
@@ -160,11 +173,24 @@ def _dispatch_layout(
     style_dict: dict[str, Any],
     smiles_map: dict[str, str] | None,
 ) -> list[LayoutEntry]:
-    """Call the appropriate layout engine for `ir.archetype`.
+    """Call the appropriate layout engine for the IR shape.
 
-    Steps 1–2: PATHWAY and REACTION_SCHEME. Remaining archetypes raise
-    NotImplementedError with a note on which step wires them.
+    Multi-panel figures (`ir.panels` populated) dispatch to
+    `layout_panel` regardless of top-level archetype. Leaf figures
+    dispatch on `ir.archetype`: PATHWAY → layout_pathway,
+    REACTION_SCHEME → layout_reaction. Remaining archetypes raise
+    NotImplementedError.
+
+    The flat `smiles_map: {entity_id: SMILES}` is adapted to the nested
+    `{panel.id: smiles_map}` shape that `layout_panel` expects — entity
+    ids are unique across the figure (IR validates), so broadcasting
+    the same dict to every panel is safe.
     """
+    if ir.panels:
+        smiles_maps = (
+            {p.id: smiles_map for p in ir.panels} if smiles_map else None
+        )
+        return layout_panel(ir, smiles_maps=smiles_maps, style_dict=style_dict)
     if ir.archetype == Archetype.PATHWAY:
         return layout_pathway(ir, style_dict=style_dict)
     if ir.archetype == Archetype.REACTION_SCHEME:
@@ -176,19 +202,71 @@ def _dispatch_layout(
             )
         return layout_reaction(ir, smiles_map=smiles_map, style_dict=style_dict)
     raise NotImplementedError(
-        f"Archetype {ir.archetype!r} is not yet wired in the compositor. "
-        "PANEL dispatch is added in Step 3."
+        f"Archetype {ir.archetype!r} is not yet wired in the compositor "
+        "(and the figure has no panels)."
     )
 
 
-def _label_requests_fn(archetype: Archetype):
+def _place_labels_per_panel(
+    ir: Figure,
+    entries: list[LayoutEntry],
+    style_dict: dict[str, Any],
+) -> list[LayoutEntry]:
+    """Run label placement separately for each panel's slice of entries.
+
+    Buckets entries by `entry.panel_chain[0]` (chrome lives in the
+    empty-chain bucket and passes through untouched). For each panel
+    whose content archetype has a `*_label_requests` sibling, requests
+    are computed from that panel's content + entries, labels are placed
+    using only that bucket (collision-isolated), and each newly-placed
+    label entry is re-stamped with `panel_chain=(panel.id,)` and the
+    panel's render offset so it lands inside its cell.
+
+    Sub-engines lay out in (0, 0)-origin panel-local coordinates and
+    rely on a per-entry `position` to translate the rendered group into
+    the parent canvas. `pathway_label_requests` reads `arrow.args`
+    (local coords), so labels come back in panel-local coords with
+    `position=(0, 0)` — they would otherwise render at the same
+    absolute spot in every panel. The panel offset is shared across all
+    sub-entries (set by `_shift_entry` in `layout_panel`), so we read it
+    from any bucket entry.
+    """
+    buckets: dict[str | None, list[LayoutEntry]] = {None: []}
+    for entry in entries:
+        key = entry.panel_chain[0] if entry.panel_chain else None
+        buckets.setdefault(key, []).append(entry)
+
+    result: list[LayoutEntry] = list(buckets[None])
+    for panel in ir.panels:
+        bucket = buckets.get(panel.id, [])
+        label_fn = _label_requests_fn(panel.content.archetype)
+        if label_fn is None or not bucket:
+            result.extend(bucket)
+            continue
+        panel_offset = bucket[0].position  # shared by every sub-entry
+        requests = label_fn(panel.content, bucket)
+        placed = place_labels(bucket, requests, style_dict=style_dict)
+        result.extend(placed[:len(bucket)])
+        for label_entry in placed[len(bucket):]:
+            result.append(label_entry._replace(
+                panel_chain=(panel.id,),
+                position=panel_offset,
+            ))
+    return result
+
+
+def _label_requests_fn(archetype: Archetype) -> Any | None:
     """Return the *_label_requests sibling for the given archetype, or None.
 
     Implements D3: the compositor discovers label-request helpers by
     archetype, rather than each layout engine auto-invoking placement.
-    Returns None when no helper exists (reaction layouts in v1, panels).
+    Returns None when no helper exists (reaction layouts in v1).
+
+    Pathway-family archetypes (PATHWAY / WORKFLOW / CELLULAR_SCHEMATIC /
+    MECHANISM_CARTOON) all dispatch through `layout_pathway` and share
+    `pathway_label_requests`.
     """
-    if archetype == Archetype.PATHWAY:
+    if archetype in _PATHWAY_COMPATIBLE_ARCHETYPES:
         return pathway_label_requests
     return None
 
@@ -218,6 +296,8 @@ def _canvas_size(ir: Figure, entries: list[LayoutEntry]) -> tuple[float, float]:
     Uses pathway_canvas from DEFAULT_LAYOUT_PARAMS for PATHWAY figures.
     Future steps can inspect entries or pass layout params through instead.
     """
+    if ir.panels:
+        return PANEL_LAYOUT_PARAMS["panel_canvas"]
     if ir.archetype == Archetype.PATHWAY:
         return PATHWAY_LAYOUT_PARAMS["pathway_canvas"]
     if ir.archetype == Archetype.REACTION_SCHEME:
@@ -253,9 +333,12 @@ def _write_svg(
     entries: list[LayoutEntry],
     canvas: tuple[float, float],
     output_path: Path,
-    panel_chain: tuple[str, ...] = (),
 ) -> None:
-    """Execute layout entries into an svgwrite Drawing and write to disk."""
+    """Execute layout entries into an svgwrite Drawing and write to disk.
+
+    Per-entry `panel_chain` (set by `layout_panel`) drives SVG-id
+    scoping; non-panel figures leave it as () and scoped id == raw id.
+    """
     w, h = canvas
     # debug=False disables svgwrite's strict SVG attribute validation so we
     # can emit data-* attributes (data-ir-id) which are valid SVG 1.1/HTML5
@@ -268,7 +351,7 @@ def _write_svg(
         if px != 0.0 or py != 0.0:
             group["transform"] = f"translate({px},{py})"
         if entry.ir_id is not None:
-            _tag_group(group, entry.ir_id, panel_chain)
+            _tag_group(group, entry.ir_id, entry.panel_chain)
         dwg.add(group)
 
     dwg.save()

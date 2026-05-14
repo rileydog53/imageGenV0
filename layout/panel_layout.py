@@ -196,6 +196,16 @@ def _shift_entry(entry: LayoutEntry, dx: float, dy: float) -> LayoutEntry:
     return entry._replace(position=(px + dx, py + dy))
 
 
+def _scope_entry(entry: LayoutEntry, panel_id: str) -> LayoutEntry:
+    """Prepend `panel_id` to the entry's panel_chain (D1 SVG-id scoping).
+
+    Prepend (not append) so that nested-panel support post-v1 produces
+    outer-to-inner chains automatically: an entry already scoped by an
+    inner panel gets the outer panel prepended on the way up.
+    """
+    return entry._replace(panel_chain=(panel_id, *entry.panel_chain))
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -296,6 +306,6 @@ def layout_panel(
         sub_entries = sub_engine(panel.content, **sub_kwargs)
         offset_y = py + title_h
         for sub in sub_entries:
-            entries.append(_shift_entry(sub, px, offset_y))
+            entries.append(_scope_entry(_shift_entry(sub, px, offset_y), panel.id))
 
     return entries
