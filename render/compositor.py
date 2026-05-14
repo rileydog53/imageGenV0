@@ -1,7 +1,7 @@
 """Renderer & compositor — Phase 5.
 
 Orchestrates the full pipeline from a validated IR `Figure` to a final
-SVG file (PNG/PDF added in Step 4 via `render/export.py`).
+SVG/PNG/PDF file on disk.
 
 Pipeline per call to `render_figure`:
   1. Resolve style preset (`style_name` kwarg overrides `ir.style_preset`;
@@ -12,7 +12,11 @@ Pipeline per call to `render_figure`:
   4. Inject a demonstrative-data watermark if `_needs_watermark` returns
      True — stub for v1 (D2).
   5. Compose into a single `svgwrite.Drawing` with IR-id tagging (D1)
-     and write to `output_path`.
+     and write to disk.
+  6. For non-SVG formats, convert the on-disk SVG into PNG/PDF via
+     `render/export.py`. The SVG is persisted at
+     `output_path.with_suffix(".svg")` next to the requested output so
+     callers can inspect / debug it.
 
 Archetype dispatch (v1 scope):
   - Multi-panel (`ir.panels` populated) → `layout_panel`; labels run
@@ -34,7 +38,8 @@ Step coupling:
   - Step 3 (done): PANEL dispatch — panel-keyed `_dispatch_layout`
     branch, per-panel `_place_labels_per_panel`, per-entry panel_chain
     SVG-id scoping.
-  - Step 4 adds `render/export.py` and wires format != "svg" here.
+  - Step 4 (done): `render/export.py` wired in below; format != "svg"
+    writes a sibling SVG then converts via cairosvg.
 """
 from __future__ import annotations
 
@@ -61,6 +66,7 @@ from layout.reaction_layout import (
     layout_reaction,
 )
 from layout.types import LayoutEntry
+from render.export import svg_to_pdf, svg_to_png
 from styles.loader import DEFAULT_PRESET, load_style
 
 # ---------------------------------------------------------------------------
@@ -93,23 +99,24 @@ def render_figure(
         style_name: Journal preset name (e.g., "nature"). Overrides
             `ir.style_preset`. Defaults to DEFAULT_PRESET when both
             are absent.
-        format: Output format. None means infer from `output_path` suffix.
-            Step 1 supports "svg" only; "png" and "pdf" raise
-            NotImplementedError until Step 4.
+        format: Output format ("svg", "png", or "pdf"). None means infer
+            from `output_path` suffix.
         smiles_map: {entity_id: SMILES string} for REACTION_SCHEME
-            figures. Unused in Step 1; forwarded in Step 2.
+            figures (required by `layout_reaction`).
         labels: When True (default), auto-invoke label placement if the
             dispatched layout engine has a sibling `*_label_requests`
             helper (D3). Pass False to suppress labels (debugging).
-        dpi: Output resolution for raster formats (Step 4+). Ignored in
-            Step 1.
+        dpi: Output resolution (default 300, journal quality). Forwarded
+            to cairosvg for both PNG and PDF; PDFs use it only for any
+            embedded raster bitmaps. Ignored when format == "svg".
 
     Returns:
-        Resolved Path to the written file.
+        Resolved Path to the written file. For non-SVG formats a sibling
+        SVG is also written at `output_path.with_suffix(".svg")`.
 
     Raises:
-        NotImplementedError: For archetypes not yet wired (Step 1:
-            non-PATHWAY) or formats not yet supported (Step 1: non-svg).
+        NotImplementedError: For archetypes not yet wired in the
+            compositor.
         ValueError: For unrecognised file suffix when `format` is None.
         LabelPlacementError: Propagated from `place_labels` when a label
             cannot be placed at any candidate position.
@@ -132,7 +139,12 @@ def render_figure(
         entries = _inject_watermark(entries, ir, style_dict)
 
     canvas = _canvas_size(ir, entries)
-    _write_svg(entries, canvas, output_path)
+    svg_path = output_path if fmt == "svg" else output_path.with_suffix(".svg")
+    _write_svg(entries, canvas, svg_path)
+    if fmt == "png":
+        svg_to_png(svg_path, output_path, dpi=dpi)
+    elif fmt == "pdf":
+        svg_to_pdf(svg_path, output_path, dpi=dpi)
     return output_path
 
 
@@ -149,23 +161,16 @@ def _resolve_style(ir: Figure, style_name: str | None) -> dict[str, Any]:
 
 def _resolve_format(
     output_path: Path, format: Literal["svg", "png", "pdf"] | None
-) -> str:
+) -> Literal["svg", "png", "pdf"]:
     if format is not None:
-        resolved = format
-    else:
-        suffix = output_path.suffix.lstrip(".")
-        if suffix not in {"svg", "png", "pdf"}:
-            raise ValueError(
-                f"Cannot infer output format from suffix {output_path.suffix!r}; "
-                "pass format= explicitly or use .svg / .png / .pdf"
-            )
-        resolved = suffix
-    if resolved in {"png", "pdf"}:
-        raise NotImplementedError(
-            f"Format {resolved!r} is not yet supported in Phase 5 Step 1; "
-            "it will be wired in Step 4 via render/export.py"
+        return format
+    suffix = output_path.suffix.lstrip(".")
+    if suffix not in {"svg", "png", "pdf"}:
+        raise ValueError(
+            f"Cannot infer output format from suffix {output_path.suffix!r}; "
+            "pass format= explicitly or use .svg / .png / .pdf"
         )
-    return resolved
+    return suffix  # type: ignore[return-value]
 
 
 def _dispatch_layout(
@@ -286,7 +291,7 @@ def _inject_watermark(
     entries: list[LayoutEntry], ir: Figure, style_dict: dict[str, Any]
 ) -> list[LayoutEntry]:
     """Append a demonstrative-data watermark entry (placeholder, never reached in v1)."""
-    # Reached only when _needs_watermark returns True — not possible in Step 1.
+    # Reached only when _needs_watermark returns True — always False in v1.
     raise NotImplementedError("Watermark injection not yet implemented.")
 
 
