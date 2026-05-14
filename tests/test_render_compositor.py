@@ -137,9 +137,19 @@ def test_explicit_pdf_raises_not_implemented(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_unwired_archetype_raises_not_implemented(tmp_path):
-    ir = load_fixture(WORKFLOW_FIXTURE)
-    assert ir.archetype == Archetype.WORKFLOW
+def test_unwired_leaf_archetype_raises_not_implemented(tmp_path):
+    """Leaf WORKFLOW (no panels) is still unwired at the compositor level.
+
+    Repurposed from the Step 2 fixture-based version: three_panel_workflow
+    now dispatches successfully through layout_panel, so the unwired path
+    is exercised here with an inline panel-less WORKFLOW figure.
+    """
+    ir = Figure(
+        archetype=Archetype.WORKFLOW,
+        entities=[{"id": "a", "type": "sample", "label": "A"}],
+        relations=[],
+    )
+    assert not ir.panels
     with pytest.raises(NotImplementedError, match="WORKFLOW|workflow"):
         render_figure(ir, tmp_path / "fig.svg")
 
@@ -347,5 +357,186 @@ def test_golden_svg_mapk_cascade(tmp_path):
     import cairosvg
     FIGURES_DIR.mkdir(exist_ok=True)
     png_path = FIGURES_DIR / "compositor_mapk_cascade.png"
+    png_path.write_bytes(cairosvg.svg2png(url=str(out)))
+    assert png_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# PANEL dispatch (Step 3)
+# ---------------------------------------------------------------------------
+
+
+def _svg_id_pairs(svg_path: Path) -> list[tuple[str | None, str | None]]:
+    """Return (id, data-ir-id) for every element carrying data-ir-id."""
+    tree = ET.parse(str(svg_path))
+    return [
+        (el.get("id"), el.get("data-ir-id"))
+        for el in tree.iter()
+        if el.get("data-ir-id") is not None
+    ]
+
+
+def test_panel_figure_renders(tmp_path):
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    assert ir.panels, "fixture must have panels"
+    out = render_figure(ir, tmp_path / "fig.svg")
+    assert out.exists()
+
+
+def test_panel_figure_output_is_valid_xml(tmp_path):
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    out = render_figure(ir, tmp_path / "fig.svg")
+    ET.parse(str(out))  # raises if not valid XML
+
+
+def test_panel_entity_ids_have_scoped_svg_ids(tmp_path):
+    """Each entity from each panel.content has id=<panel.id>__<entity.id>
+    and data-ir-id=<entity.id> (D1)."""
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    out = render_figure(ir, tmp_path / "fig.svg")
+    pairs = _svg_id_pairs(out)
+    by_data: dict[str, set[str | None]] = {}
+    for svg_id, data_id in pairs:
+        by_data.setdefault(data_id, set()).add(svg_id)
+
+    for panel in ir.panels:
+        for entity in panel.content.entities:
+            scoped = f"{panel.id}__{entity.id}"
+            assert entity.id in by_data, (
+                f"data-ir-id {entity.id!r} not found in SVG"
+            )
+            assert scoped in by_data[entity.id], (
+                f"expected svg id {scoped!r} for entity {entity.id!r}, "
+                f"got {by_data[entity.id]!r}"
+            )
+
+
+def test_panel_chrome_tagged_with_unprefixed_ids(tmp_path):
+    """Chrome entries' ir_id is already panel-scoped (`p1_chrome`);
+    panel_chain is empty so SVG id == data-ir-id."""
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    out = render_figure(ir, tmp_path / "fig.svg")
+    pairs = _svg_id_pairs(out)
+    for panel in ir.panels:
+        chrome_id = f"{panel.id}_chrome"
+        match = [(s, d) for s, d in pairs if d == chrome_id]
+        assert match, f"chrome data-ir-id {chrome_id!r} not found"
+        assert all(s == chrome_id for s, _ in match), (
+            f"chrome svg id should equal data-ir-id {chrome_id!r}, "
+            f"got {match!r}"
+        )
+
+
+def test_panel_labels_placed_per_panel(tmp_path):
+    """Relation labels (e.g. `treat`, `lyse`) render and carry
+    panel-scoped svg ids."""
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    out = render_figure(ir, tmp_path / "fig.svg", labels=True)
+    pairs = _svg_id_pairs(out)
+    label_pairs = [(s, d) for s, d in pairs if d and d.startswith("label_")]
+    assert label_pairs, "expected at least one label_* data-ir-id"
+    # At least one label's svg id should be panel-scoped.
+    scoped = [
+        (s, d) for s, d in label_pairs
+        if s and "__" in s and s.split("__", 1)[1] == d
+    ]
+    assert scoped, (
+        f"expected at least one label with panel-scoped svg id, "
+        f"got {label_pairs!r}"
+    )
+
+
+def test_panel_figure_with_reaction_inside(tmp_path):
+    """Flat smiles_map broadcasts to all panels; one REACTION_SCHEME
+    panel renders without error."""
+    ir = Figure(
+        archetype=Archetype.WORKFLOW,
+        title="reaction-in-panel",
+        panels=[
+            {
+                "id": "p1",
+                "title": "Step 1",
+                "grid": [0, 0, 1, 1],
+                "content": {
+                    "archetype": "workflow",
+                    "entities": [
+                        {"id": "cells", "type": "sample", "label": "Cells"},
+                        {"id": "drug", "type": "ligand", "label": "Drug"},
+                    ],
+                    "relations": [
+                        {"source": "drug", "target": "cells", "type": "generic"}
+                    ],
+                },
+            },
+            {
+                "id": "p2",
+                "title": "Step 2",
+                "grid": [0, 1, 1, 1],
+                "content": {
+                    "archetype": "reaction_scheme",
+                    "entities": [
+                        {"id": "alcohol", "type": "metabolite", "label": "EtOH"},
+                        {"id": "aldehyde", "type": "metabolite", "label": "AcH"},
+                    ],
+                    "relations": [
+                        {"source": "alcohol", "target": "aldehyde", "type": "generic"}
+                    ],
+                },
+            },
+        ],
+    )
+    smiles_map = {"alcohol": "CCO", "aldehyde": "CC=O"}
+    out = render_figure(ir, tmp_path / "fig.svg", smiles_map=smiles_map)
+    assert out.exists()
+    pairs = _svg_id_pairs(out)
+    data_ids = {d for _, d in pairs}
+    assert "reaction_0" in data_ids
+    assert "cells" in data_ids
+
+
+def test_panel_figure_missing_smiles_map_raises_for_reaction_panel(tmp_path):
+    """Omitting smiles_map when a panel contains a REACTION_SCHEME
+    raises ValueError naming the reaction panel id."""
+    ir = Figure(
+        archetype=Archetype.WORKFLOW,
+        panels=[
+            {
+                "id": "rxn_panel",
+                "title": "Rxn",
+                "grid": [0, 0, 1, 1],
+                "content": {
+                    "archetype": "reaction_scheme",
+                    "entities": [
+                        {"id": "alcohol", "type": "metabolite", "label": "EtOH"},
+                        {"id": "aldehyde", "type": "metabolite", "label": "AcH"},
+                    ],
+                    "relations": [
+                        {"source": "alcohol", "target": "aldehyde", "type": "generic"}
+                    ],
+                },
+            },
+        ],
+    )
+    with pytest.raises(ValueError, match="rxn_panel"):
+        render_figure(ir, tmp_path / "fig.svg")
+
+
+def test_golden_svg_three_panel_workflow(tmp_path):
+    """End-to-end golden: render three_panel_workflow, verify per-panel
+    entity tagging, and emit the PNG for visual review."""
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    out = render_figure(ir, tmp_path / "three_panel_workflow.svg")
+    pairs = _svg_id_pairs(out)
+    data_ids = {d for _, d in pairs}
+
+    for panel in ir.panels:
+        assert f"{panel.id}_chrome" in data_ids
+        for entity in panel.content.entities:
+            assert entity.id in data_ids
+
+    from tests._helpers import FIGURES_DIR
+    import cairosvg
+    FIGURES_DIR.mkdir(exist_ok=True)
+    png_path = FIGURES_DIR / "compositor_three_panel_workflow.png"
     png_path.write_bytes(cairosvg.svg2png(url=str(out)))
     assert png_path.exists()
