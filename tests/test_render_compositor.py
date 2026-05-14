@@ -1,9 +1,9 @@
-"""Tests for render/compositor.py — Phase 5 Step 1.
+"""Tests for render/compositor.py — Phase 5 Steps 1–2.
 
 Covers: render_figure return value, SVG file validity, style resolution,
-format inference/rejection, archetype dispatch, IR-id tagging (D1),
-label auto-invoke (D3), watermark stub (D2), and a golden-SVG structure
-check for the mapk_cascade fixture.
+format inference/rejection, archetype dispatch (PATHWAY + REACTION_SCHEME),
+IR-id tagging (D1), label auto-invoke (D3), watermark stub (D2), and
+golden-SVG structure checks for mapk_cascade and oxidation_reaction.
 """
 from __future__ import annotations
 
@@ -28,6 +28,11 @@ from tests._helpers import load_fixture
 
 MAPK = "mapk_cascade.json"
 TRANSLOCATION = "multi_compartment_translocation.json"
+OXIDATION = "oxidation_reaction.json"
+WORKFLOW_FIXTURE = "three_panel_workflow.json"
+
+# Ethanol -> Acetaldehyde for the oxidation_reaction fixture.
+OXIDATION_SMILES = {"alcohol": "CCO", "aldehyde": "CC=O"}
 
 
 # ---------------------------------------------------------------------------
@@ -132,16 +137,86 @@ def test_explicit_pdf_raises_not_implemented(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_non_pathway_archetype_raises_not_implemented(tmp_path):
-    ir = load_fixture("oxidation_reaction.json")
-    assert ir.archetype == Archetype.REACTION_SCHEME
-    with pytest.raises(NotImplementedError, match="REACTION_SCHEME"):
+def test_unwired_archetype_raises_not_implemented(tmp_path):
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    assert ir.archetype == Archetype.WORKFLOW
+    with pytest.raises(NotImplementedError, match="WORKFLOW|workflow"):
         render_figure(ir, tmp_path / "fig.svg")
 
 
 def test_pathway_archetype_does_not_raise(tmp_path):
     ir = load_fixture(MAPK)
     render_figure(ir, tmp_path / "fig.svg")  # no exception
+
+
+def test_pathway_archetype_ignores_smiles_map(tmp_path):
+    """Regression: smiles_map=None on a PATHWAY must not raise (smiles_map
+    is REACTION_SCHEME-only)."""
+    ir = load_fixture(MAPK)
+    render_figure(ir, tmp_path / "fig.svg", smiles_map=None)  # no exception
+
+
+# ---------------------------------------------------------------------------
+# REACTION_SCHEME dispatch (Step 2)
+# ---------------------------------------------------------------------------
+
+
+def test_reaction_scheme_renders_with_smiles_map(tmp_path):
+    ir = load_fixture(OXIDATION)
+    out = render_figure(ir, tmp_path / "fig.svg", smiles_map=OXIDATION_SMILES)
+    assert out.exists()
+
+
+def test_reaction_scheme_output_is_valid_xml(tmp_path):
+    ir = load_fixture(OXIDATION)
+    out = render_figure(ir, tmp_path / "fig.svg", smiles_map=OXIDATION_SMILES)
+    ET.parse(str(out))  # raises if not valid XML
+
+
+def test_reaction_scheme_missing_smiles_map_raises(tmp_path):
+    """ValueError must list every entity id when smiles_map is None."""
+    ir = load_fixture(OXIDATION)
+    with pytest.raises(ValueError, match="smiles_map required for REACTION_SCHEME") as exc:
+        render_figure(ir, tmp_path / "fig.svg")  # smiles_map omitted
+    for eid in ("alcohol", "aldehyde"):
+        assert eid in str(exc.value), f"entity id {eid!r} not in error message"
+
+
+def test_reaction_scheme_tagged_with_data_ir_id(tmp_path):
+    """D1: the reaction_0 entry's group must carry data-ir-id."""
+    # The _tag_group workaround (debug=False on the group + Drawing) is what
+    # lets data-ir-id survive svgwrite's strict validator; see compositor.py.
+    ir = load_fixture(OXIDATION)
+    out = render_figure(ir, tmp_path / "fig.svg", smiles_map=OXIDATION_SMILES)
+    tagged = _svg_elements_with_attr(out, "data-ir-id")
+    assert "reaction_0" in tagged
+
+
+def test_reaction_scheme_style_kwarg_accepted(tmp_path):
+    ir = load_fixture(OXIDATION)
+    out = render_figure(
+        ir, tmp_path / "fig.svg", style_name="nature", smiles_map=OXIDATION_SMILES
+    )
+    assert out.exists()
+
+
+def test_golden_svg_oxidation_reaction(tmp_path):
+    """Render oxidation_reaction and verify the reaction_0 group is tagged."""
+    ir = load_fixture(OXIDATION)
+    out = render_figure(
+        ir, tmp_path / "oxidation_reaction.svg", smiles_map=OXIDATION_SMILES
+    )
+
+    tagged = _svg_elements_with_attr(out, "data-ir-id")
+    assert "reaction_0" in tagged
+
+    # Produce a fixture PNG for visual inspection (mirrors mapk_cascade).
+    from tests._helpers import FIGURES_DIR
+    import cairosvg
+    FIGURES_DIR.mkdir(exist_ok=True)
+    png_path = FIGURES_DIR / "compositor_oxidation_reaction.png"
+    png_path.write_bytes(cairosvg.svg2png(url=str(out)))
+    assert png_path.exists()
 
 
 # ---------------------------------------------------------------------------
