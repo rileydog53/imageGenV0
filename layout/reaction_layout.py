@@ -61,6 +61,7 @@ from primitives.chemistry import render_reaction
 DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
     "reaction_molecule_size": (140, 100),   # forwarded to render_reaction
     "reaction_origin":        (0.0, 0.0),   # top-left of the reaction Group
+    "reaction_canvas":        (800.0, 300.0),  # SVG viewport for compositor (Phase 5)
 }
 
 

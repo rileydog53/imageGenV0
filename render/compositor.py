@@ -42,6 +42,7 @@ import svgwrite
 from ir.schema import Archetype, Figure
 from layout.label_placement import LabelPlacementError, place_labels
 from layout.pathway_layout import layout_pathway, pathway_label_requests
+from layout.reaction_layout import layout_reaction
 from layout.types import LayoutEntry
 from styles.loader import DEFAULT_PRESET, load_style
 
@@ -50,6 +51,7 @@ from styles.loader import DEFAULT_PRESET, load_style
 # ---------------------------------------------------------------------------
 
 _PATHWAY_CANVAS_PARAM = "pathway_canvas"
+_REACTION_CANVAS_PARAM = "reaction_canvas"
 _DEFAULT_CANVAS = (800.0, 600.0)
 
 # ---------------------------------------------------------------------------
@@ -155,14 +157,22 @@ def _dispatch_layout(
 ) -> list[LayoutEntry]:
     """Call the appropriate layout engine for `ir.archetype`.
 
-    Step 1: PATHWAY only. Remaining archetypes raise NotImplementedError
-    with a note on which step wires them.
+    Steps 1–2: PATHWAY and REACTION_SCHEME. Remaining archetypes raise
+    NotImplementedError with a note on which step wires them.
     """
     if ir.archetype == Archetype.PATHWAY:
         return layout_pathway(ir, style_dict=style_dict)
+    if ir.archetype == Archetype.REACTION_SCHEME:
+        if smiles_map is None:
+            missing = [e.id for e in ir.entities]
+            raise ValueError(
+                f"smiles_map required for REACTION_SCHEME; "
+                f"missing entity ids: {missing}"
+            )
+        return layout_reaction(ir, smiles_map=smiles_map, style_dict=style_dict)
     raise NotImplementedError(
         f"Archetype {ir.archetype!r} is not yet wired in the compositor. "
-        "REACTION_SCHEME is added in Step 2; PANEL dispatch in Step 3."
+        "PANEL dispatch is added in Step 3."
     )
 
 
@@ -206,6 +216,9 @@ def _canvas_size(ir: Figure, entries: list[LayoutEntry]) -> tuple[float, float]:
     if ir.archetype == Archetype.PATHWAY:
         from layout.pathway_layout import DEFAULT_LAYOUT_PARAMS
         return DEFAULT_LAYOUT_PARAMS[_PATHWAY_CANVAS_PARAM]
+    if ir.archetype == Archetype.REACTION_SCHEME:
+        from layout.reaction_layout import DEFAULT_LAYOUT_PARAMS
+        return DEFAULT_LAYOUT_PARAMS[_REACTION_CANVAS_PARAM]
     return _DEFAULT_CANVAS
 
 
