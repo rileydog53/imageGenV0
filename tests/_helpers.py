@@ -23,8 +23,8 @@ import cairosvg
 import svgwrite
 import svgwrite.container
 
-from ir.schema import Figure
-from layout.types import LayoutEntry
+from imageGenV0.ir.schema import Figure
+from imageGenV0.layout.types import LayoutEntry
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FIGURES_DIR = Path(__file__).parent / "figures"

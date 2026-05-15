@@ -5,7 +5,7 @@ import pytest
 import svgwrite
 import svgwrite.container
 
-from primitives.lab_equipment import (
+from imageGenV0.primitives.lab_equipment import (
     DEFAULT_STYLE,
     _MICROSCOPE_STYLES,
     _TUBE_BUILDERS,

@@ -46,10 +46,10 @@ import svgwrite.container
 import svgwrite.shapes
 import svgwrite.text
 
-from ir.schema import Archetype, Figure
-from layout.pathway_layout import layout_pathway
-from layout.reaction_layout import layout_reaction
-from layout.types import LayoutEntry
+from imageGenV0.ir.schema import Archetype, Figure
+from imageGenV0.layout.pathway_layout import layout_pathway
+from imageGenV0.layout.reaction_layout import layout_reaction
+from imageGenV0.layout.types import LayoutEntry
 
 
 # ---------------------------------------------------------------------------

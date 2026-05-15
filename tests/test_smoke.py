@@ -73,48 +73,48 @@ def test_cairosvg_roundtrip():
 # --- project module imports ---
 
 def test_import_ir():
-    import ir.schema  # noqa: F401
+    import imageGenV0.ir.schema  # noqa: F401
 
 
 def test_import_archetypes():
-    import archetypes.pathway  # noqa: F401
-    import archetypes.reaction_scheme  # noqa: F401
-    import archetypes.workflow  # noqa: F401
-    import archetypes.cellular_schematic  # noqa: F401
-    import archetypes.mechanism_cartoon  # noqa: F401
+    import imageGenV0.archetypes.pathway  # noqa: F401
+    import imageGenV0.archetypes.reaction_scheme  # noqa: F401
+    import imageGenV0.archetypes.workflow  # noqa: F401
+    import imageGenV0.archetypes.cellular_schematic  # noqa: F401
+    import imageGenV0.archetypes.mechanism_cartoon  # noqa: F401
 
 
 def test_import_primitives():
-    import primitives.arrows  # noqa: F401
-    import primitives.proteins  # noqa: F401
-    import primitives.membranes  # noqa: F401
-    import primitives.nucleic_acids  # noqa: F401
-    import primitives.cells  # noqa: F401
-    import primitives.chemistry  # noqa: F401
-    import primitives.lab_equipment  # noqa: F401
+    import imageGenV0.primitives.arrows  # noqa: F401
+    import imageGenV0.primitives.proteins  # noqa: F401
+    import imageGenV0.primitives.membranes  # noqa: F401
+    import imageGenV0.primitives.nucleic_acids  # noqa: F401
+    import imageGenV0.primitives.cells  # noqa: F401
+    import imageGenV0.primitives.chemistry  # noqa: F401
+    import imageGenV0.primitives.lab_equipment  # noqa: F401
 
 
 def test_import_layout():
-    import layout.pathway_layout  # noqa: F401
-    import layout.reaction_layout  # noqa: F401
-    import layout.panel_layout  # noqa: F401
-    import layout.label_placement  # noqa: F401
+    import imageGenV0.layout.pathway_layout  # noqa: F401
+    import imageGenV0.layout.reaction_layout  # noqa: F401
+    import imageGenV0.layout.panel_layout  # noqa: F401
+    import imageGenV0.layout.label_placement  # noqa: F401
 
 
 def test_import_styles():
-    import styles.loader  # noqa: F401
+    import imageGenV0.styles.loader  # noqa: F401
 
 
 def test_import_render():
-    import render.compositor  # noqa: F401
-    import render.export  # noqa: F401
-    import render.cli  # noqa: F401
+    import imageGenV0.render.compositor  # noqa: F401
+    import imageGenV0.render.export  # noqa: F401
+    import imageGenV0.render.cli  # noqa: F401
 
 
 def test_import_verify():
-    import verify.semantic_check  # noqa: F401
-    import verify.legibility_check  # noqa: F401
-    import verify.convention_check  # noqa: F401
+    import imageGenV0.verify.semantic_check  # noqa: F401
+    import imageGenV0.verify.legibility_check  # noqa: F401
+    import imageGenV0.verify.convention_check  # noqa: F401
 
 
 # --- directory structure ---
@@ -123,20 +123,20 @@ def test_directory_structure():
     from pathlib import Path
     root = Path(__file__).parent.parent
     required = [
-        "ir/schema.py",
-        "archetypes/pathway.py", "archetypes/reaction_scheme.py",
-        "archetypes/workflow.py", "archetypes/cellular_schematic.py",
-        "archetypes/mechanism_cartoon.py",
-        "primitives/arrows.py", "primitives/proteins.py",
-        "primitives/membranes.py", "primitives/nucleic_acids.py",
-        "primitives/cells.py", "primitives/chemistry.py",
-        "primitives/lab_equipment.py",
-        "layout/pathway_layout.py", "layout/reaction_layout.py",
-        "layout/panel_layout.py", "layout/label_placement.py",
-        "styles/loader.py",
-        "render/compositor.py", "render/export.py", "render/cli.py",
-        "verify/semantic_check.py", "verify/legibility_check.py",
-        "verify/convention_check.py",
+        "imageGenV0/ir/schema.py",
+        "imageGenV0/archetypes/pathway.py", "imageGenV0/archetypes/reaction_scheme.py",
+        "imageGenV0/archetypes/workflow.py", "imageGenV0/archetypes/cellular_schematic.py",
+        "imageGenV0/archetypes/mechanism_cartoon.py",
+        "imageGenV0/primitives/arrows.py", "imageGenV0/primitives/proteins.py",
+        "imageGenV0/primitives/membranes.py", "imageGenV0/primitives/nucleic_acids.py",
+        "imageGenV0/primitives/cells.py", "imageGenV0/primitives/chemistry.py",
+        "imageGenV0/primitives/lab_equipment.py",
+        "imageGenV0/layout/pathway_layout.py", "imageGenV0/layout/reaction_layout.py",
+        "imageGenV0/layout/panel_layout.py", "imageGenV0/layout/label_placement.py",
+        "imageGenV0/styles/loader.py",
+        "imageGenV0/render/compositor.py", "imageGenV0/render/export.py", "imageGenV0/render/cli.py",
+        "imageGenV0/verify/semantic_check.py", "imageGenV0/verify/legibility_check.py",
+        "imageGenV0/verify/convention_check.py",
         "references/journal_conventions.md",
         "tests/fixtures", "tests/figures",
         "README.md",

@@ -49,25 +49,25 @@ from typing import Any, Literal
 
 import svgwrite
 
-from ir.schema import Archetype, Figure
-from layout.label_placement import LabelPlacementError, place_labels
-from layout.panel_layout import (
+from imageGenV0.ir.schema import Archetype, Figure
+from imageGenV0.layout.label_placement import LabelPlacementError, place_labels
+from imageGenV0.layout.panel_layout import (
     DEFAULT_LAYOUT_PARAMS as PANEL_LAYOUT_PARAMS,
     layout_panel,
 )
-from layout.pathway_layout import (
+from imageGenV0.layout.pathway_layout import (
     DEFAULT_LAYOUT_PARAMS as PATHWAY_LAYOUT_PARAMS,
     _PATHWAY_COMPATIBLE_ARCHETYPES,
     layout_pathway,
     pathway_label_requests,
 )
-from layout.reaction_layout import (
+from imageGenV0.layout.reaction_layout import (
     DEFAULT_LAYOUT_PARAMS as REACTION_LAYOUT_PARAMS,
     layout_reaction,
 )
-from layout.types import LayoutEntry
-from render.export import svg_to_pdf, svg_to_png
-from styles.loader import DEFAULT_PRESET, load_style
+from imageGenV0.layout.types import LayoutEntry
+from imageGenV0.render.export import svg_to_pdf, svg_to_png
+from imageGenV0.styles.loader import DEFAULT_PRESET, load_style
 
 # ---------------------------------------------------------------------------
 # Constants

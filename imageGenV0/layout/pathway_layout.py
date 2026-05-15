@@ -59,7 +59,7 @@ import svgwrite.container
 import svgwrite.shapes
 import svgwrite.text
 
-from ir.schema import (
+from imageGenV0.ir.schema import (
     Archetype,
     Compartment,
     CompartmentType,
@@ -68,9 +68,9 @@ from ir.schema import (
     Figure,
     RelationType,
 )
-from layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
-from layout.types import LayoutEntry
-from primitives import arrows
+from imageGenV0.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
+from imageGenV0.layout.types import LayoutEntry
+from imageGenV0.primitives import arrows
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +438,7 @@ def pathway_label_requests(
         A list of LabelRequest items, one per `Relation.label` that is
         truthy. Empty when no relations carry labels.
     """
-    from layout.label_placement import LabelRequest  # noqa: PLC0415 — break import cycle
+    from imageGenV0.layout.label_placement import LabelRequest  # noqa: PLC0415 — break import cycle
 
     arrow_entries = [e for e in entries if e.primitive in RELATION_TO_ARROW.values()]
     if len(arrow_entries) != len(figure.relations):

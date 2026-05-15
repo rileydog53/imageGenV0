@@ -5,10 +5,10 @@ import pytest
 import svgwrite
 import svgwrite.container
 
-from ir.schema import (
+from imageGenV0.ir.schema import (
     Archetype, Entity, EntityType, Figure, Panel, Relation, RelationType,
 )
-from layout.panel_layout import (
+from imageGenV0.layout.panel_layout import (
     ARCHETYPE_TO_LAYOUT,
     DEFAULT_LAYOUT_PARAMS,
     _cell_size,
@@ -17,9 +17,9 @@ from layout.panel_layout import (
     _panel_rect,
     layout_panel,
 )
-from layout.pathway_layout import layout_pathway
-from layout.reaction_layout import layout_reaction
-from layout.types import LayoutEntry
+from imageGenV0.layout.pathway_layout import layout_pathway
+from imageGenV0.layout.reaction_layout import layout_reaction
+from imageGenV0.layout.types import LayoutEntry
 from tests._helpers import load_fixture, render_entries_to_png
 
 

@@ -1,4 +1,4 @@
-from ir.schema import (
+from imageGenV0.ir.schema import (
     Annotation,
     AnnotationType,
     Archetype,

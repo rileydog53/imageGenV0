@@ -15,14 +15,14 @@ import math
 import svgwrite
 import svgwrite.container
 
-from primitives.membranes import (
+from imageGenV0.primitives.membranes import (
     DEFAULT_STYLE,
     MembraneCurve,
     cell_membrane_outline,
     lipid_bilayer,
     nuclear_envelope,
 )
-from primitives.proteins import gpcr, receptor
+from imageGenV0.primitives.proteins import gpcr, receptor
 from tests._helpers import render_group_to_png
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from ir import (
+from imageGenV0.ir import (
     Annotation,
     AnnotationType,
     Archetype,

@@ -5,8 +5,8 @@ import pytest
 import svgwrite
 import svgwrite.container
 
-from ir.schema import Figure
-from layout.label_placement import (
+from imageGenV0.ir.schema import Figure
+from imageGenV0.layout.label_placement import (
     DEFAULT_LAYOUT_PARAMS,
     LabelPlacementError,
     LabelRequest,
@@ -14,13 +14,13 @@ from layout.label_placement import (
     _label_primitive,
     place_labels,
 )
-from layout.pathway_layout import (
+from imageGenV0.layout.pathway_layout import (
     RELATION_TO_ARROW,
     layout_pathway,
     pathway_label_requests,
 )
-from layout.types import LayoutEntry
-from primitives import proteins
+from imageGenV0.layout.types import LayoutEntry
+from imageGenV0.primitives import proteins
 from tests._helpers import load_fixture, render_entries_to_png
 
 

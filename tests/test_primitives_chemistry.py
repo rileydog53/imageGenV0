@@ -18,14 +18,14 @@ import svgwrite
 import svgwrite.container
 from PIL import Image
 
-from primitives.chemistry import (
+from imageGenV0.primitives.chemistry import (
     DEFAULT_STYLE,
     _FUNCTIONAL_GROUPS,
     render_functional_group,
     render_molecule,
     render_reaction,
 )
-from primitives.proteins import receptor
+from imageGenV0.primitives.proteins import receptor
 from tests._helpers import render_group_to_png
 
 FIGURES_DIR = Path(__file__).parent / "figures"
