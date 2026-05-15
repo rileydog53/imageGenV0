@@ -44,7 +44,7 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
 | 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
-| 5 | Renderer & compositor | 🔄 In progress (Steps 1–4 done: PATHWAY + REACTION_SCHEME + PANEL in `compositor.py`; PNG + PDF via `render/export.py`) |
+| 5 | Renderer & compositor | 🔄 In progress (Steps 1–5 done: PATHWAY + REACTION_SCHEME + PANEL in `compositor.py`; PNG + PDF via `render/export.py`; package restructured to `imageGenV0/`) |
 | 6 | Verification suite | ⬜ Pending |
 | 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
 | 8 | Integration & polish | ⬜ Pending |
@@ -52,6 +52,8 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 Current test count: **312 green** (22 smoke + 25 IR + 7 arrows + 11 proteins + 12 membranes + 13 nucleic_acids + 14 cells + 23 chemistry + 29 lab_equipment + 16 layout_reaction + 30 layout_pathway + 16 layout_panel + 16 layout_label_placement + 25 styles_loader + 45 render_compositor + 4 render_export). Phase 2 (primitive library) complete. Phase 3 (layout engines) complete. Phase 4 (style presets) complete. Phase 5 Steps 1–4 complete: `render/compositor.py` dispatches PATHWAY, REACTION_SCHEME, and multi-panel figures; IR-id tagging (D1) with panel-chain scoping (`p1__ras`); per-panel label auto-invoke (D3); watermark stub (D2); `smiles_map` threading per D4. `LayoutEntry` gains `panel_chain: tuple[str, ...]` field (backward-compatible default `()`). `_label_requests_fn` now covers all pathway-family archetypes. Step 4 wires `render/export.py` (cairosvg-backed `svg_to_png` / `svg_to_pdf`) into `render_figure`: non-SVG output writes a sibling `.svg` next to the requested file for inspection, then converts via cairosvg with `scale = dpi / 96` so the `dpi` knob has a predictable effect on pixel-dimensioned SVGs.
 
 **Pre–Phase 5 cleanup (2026-05-11):** `LayoutEntry` lives in `layout/types.py` (re-exported from `layout`); `ENTITY_BBOX` and `ENTITY_TO_PRIMITIVE` live in `layout/_geom.py`; test helpers (`load_fixture`, `render_entries_to_png`, `render_group_to_png`) live in `tests/_helpers.py`. Tags: `phase-4-complete`, `pre-phase-5-cleanup`.
+
+**Phase 5 Step 5 — package restructure (2026-05-14):** All source dirs (`ir/`, `render/`, `layout/`, `archetypes/`, `primitives/`, `styles/`, `verify/`) now live under `imageGenV0/`. Tests stay at the repo root. The package is installable with `pip install -e ~/Desktop/imageGenV0/` (uses the shared `~/Desktop/.venv`). Every internal import was mechanically prefixed with `imageGenV0.`; no source bodies were changed. `python -m imageGenV0` runs a placeholder banner — the real CLI lands in Step 6.
 
 ## Plan
 
