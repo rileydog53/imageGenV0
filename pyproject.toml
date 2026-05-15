@@ -1,3 +1,16 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imageGenV0"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.setuptools.packages.find]
+include = ["imageGenV0*"]
+exclude = ["tests*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
