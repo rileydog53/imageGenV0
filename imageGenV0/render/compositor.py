@@ -75,6 +75,8 @@ from imageGenV0.styles.loader import DEFAULT_PRESET, load_style
 
 _DEFAULT_CANVAS = (800.0, 600.0)
 
+Format = Literal["svg", "png", "pdf"]
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -85,7 +87,7 @@ def render_figure(
     output_path: str | Path,
     *,
     style_name: str | None = None,
-    format: Literal["svg", "png", "pdf"] | None = None,
+    format: Format | None = None,
     smiles_map: dict[str, str] | None = None,
     labels: bool = True,
     dpi: int = 300,
@@ -160,8 +162,8 @@ def _resolve_style(ir: Figure, style_name: str | None) -> dict[str, Any]:
 
 
 def _resolve_format(
-    output_path: Path, format: Literal["svg", "png", "pdf"] | None
-) -> Literal["svg", "png", "pdf"]:
+    output_path: Path, format: Format | None
+) -> Format:
     if format is not None:
         return format
     suffix = output_path.suffix.lstrip(".")
