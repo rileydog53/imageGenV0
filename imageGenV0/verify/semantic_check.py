@@ -29,12 +29,13 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Literal
 
 from imageGenV0.ir.schema import Archetype, Figure
 from imageGenV0.layout.reaction_layout import REACTION_GROUP_IR_ID
 from imageGenV0.render.compositor import scoped_id
 
-_Kind = str  # "entity" | "compartment" | "relation" | "reaction"
+_Kind = Literal["entity", "compartment", "relation", "reaction"]
 
 
 class SemanticCheckError(RuntimeError):
@@ -47,13 +48,13 @@ class SemanticCheckError(RuntimeError):
             found (e.g. ``"p1__ras"``; equals ``ir_id`` at depth 0).
     """
 
-    def __init__(self, ir_id: str, kind: _Kind, scoped_id: str) -> None:
+    def __init__(self, ir_id: str, kind: _Kind, expected_id: str) -> None:
         self.ir_id = ir_id
         self.kind = kind
-        self.scoped_id = scoped_id
+        self.scoped_id = expected_id
         super().__init__(
             f"Missing {kind} in rendered SVG: ir_id={ir_id!r} "
-            f"(expected scoped id {scoped_id!r})"
+            f"(expected scoped id {expected_id!r})"
         )
 
 
