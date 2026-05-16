@@ -111,6 +111,12 @@ class Relation(_IRBase):
     label: str | None = None
     conditions: ReactionConditions | dict[str, Any] | None = None
 
+    @property
+    def ir_id(self) -> str:
+        """Synthetic IR id — relations have no declared id, so layout and
+        verification derive one deterministically from the endpoints + type."""
+        return f"rel_{self.source}_{self.type.value}_{self.target}"
+
 
 class Annotation(_IRBase):
     type: AnnotationType

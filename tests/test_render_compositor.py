@@ -18,8 +18,8 @@ from imageGenV0.render.compositor import (
     _needs_watermark,
     _resolve_format,
     _resolve_style,
-    _scoped_id,
     render_figure,
+    scoped_id,
 )
 from tests._helpers import load_fixture
 
@@ -308,17 +308,16 @@ def test_relation_synthetic_ids_tagged(tmp_path):
     out = render_figure(ir, tmp_path / "fig.svg")
     tagged = _svg_elements_with_attr(out, "data-ir-id")
     for r in ir.relations:
-        expected = f"rel_{r.source}_{r.type.value}_{r.target}"
-        assert expected in tagged, f"relation id {expected!r} not found in data-ir-id attrs"
+        assert r.ir_id in tagged, f"relation id {r.ir_id!r} not found in data-ir-id attrs"
 
 
 def test_scoped_id_at_depth_zero_equals_raw_id():
-    assert _scoped_id("ras", ()) == "ras"
+    assert scoped_id("ras", ()) == "ras"
 
 
 def test_scoped_id_with_panel_chain():
-    assert _scoped_id("ras", ("panel_a",)) == "panel_a__ras"
-    assert _scoped_id("ras", ("panel_a", "panel_b")) == "panel_a__panel_b__ras"
+    assert scoped_id("ras", ("panel_a",)) == "panel_a__ras"
+    assert scoped_id("ras", ("panel_a", "panel_b")) == "panel_a__panel_b__ras"
 
 
 def test_svg_id_equals_data_ir_id_at_depth_zero(tmp_path):

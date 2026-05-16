@@ -401,7 +401,7 @@ def layout_pathway(
             RELATION_TO_ARROW[r.type],
             (start, end),
             style_kwargs,
-            ir_id=f"rel_{r.source}_{r.type.value}_{r.target}",
+            ir_id=r.ir_id,
         ))
 
     return entries
@@ -470,6 +470,6 @@ def pathway_label_requests(
             anchor=midpoint,
             anchor_size=(2.0, 2.0),
             priority=priority,
-            ir_id=f"rel_{relation.source}_{relation.type.value}_{relation.target}",
+            ir_id=relation.ir_id,
         ))
     return requests

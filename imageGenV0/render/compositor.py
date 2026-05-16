@@ -312,7 +312,7 @@ def _canvas_size(ir: Figure, entries: list[LayoutEntry]) -> tuple[float, float]:
     return _DEFAULT_CANVAS
 
 
-def _scoped_id(raw_ir_id: str, panel_chain: tuple[str, ...]) -> str:
+def scoped_id(raw_ir_id: str, panel_chain: tuple[str, ...]) -> str:
     """Build a document-unique SVG id from the panel hierarchy prefix + raw id (D1)."""
     if panel_chain:
         return "__".join((*panel_chain, raw_ir_id))
@@ -332,7 +332,7 @@ def _tag_group(
     children are unaffected — each element carries its own debug flag.
     """
     group._parameter.debug = False  # allow data-* attrs; debug is a read-only property
-    group.attribs["id"] = _scoped_id(raw_ir_id, panel_chain)
+    group.attribs["id"] = scoped_id(raw_ir_id, panel_chain)
     group.attribs["data-ir-id"] = raw_ir_id
 
 
