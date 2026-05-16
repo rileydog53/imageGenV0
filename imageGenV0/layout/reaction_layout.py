@@ -64,6 +64,11 @@ DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
     "reaction_canvas":        (800.0, 300.0),  # SVG viewport for compositor (Phase 5)
 }
 
+# A REACTION_SCHEME renders as a single composite group (molecules are
+# drawn from SMILES as one unit, not per-entity). This is the ir_id that
+# group carries — and the only semantic anchor verify/ can check for it.
+REACTION_GROUP_IR_ID = "reaction_0"
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -195,5 +200,5 @@ def layout_reaction(
         args=(reactants_smiles, products_smiles),
         kwargs=kwargs,
         position=params["reaction_origin"],
-        ir_id="reaction_0",
+        ir_id=REACTION_GROUP_IR_ID,
     )]
