@@ -44,18 +44,14 @@ REGEN = os.environ.get("IMAGEGENV0_REGEN_GOLDEN") == "1"
 # pipeline, mapped to its smiles_map. REACTION_SCHEME fixtures require one
 # (D4); all other archetypes pass None.
 #
-# Four fixtures are deliberately excluded — they expose pre-existing gaps,
-# not regressions this suite should mask:
-#   - cellular_schematic / mechanism_cartoon / western_blot_schematic:
-#     the compositor only dispatches PATHWAY, REACTION_SCHEME, and panel
-#     figures; a top-level WORKFLOW / CELLULAR_SCHEMATIC / MECHANISM_CARTOON
-#     with no panels raises NotImplementedError.
-#   - graphical_abstract_mrna_vaccine: a dense panel overflows the greedy
-#     label engine (LabelPlacementError; see BACKLOG L2/L14).
-# Add these once the compositor wires the remaining archetypes and the label
-# engine gains a fallback.
+# Three fixtures are deliberately excluded — graphical_abstract_mrna_vaccine,
+# mechanism_cartoon, and western_blot_schematic each overflow the greedy label
+# engine (LabelPlacementError; see BACKLOG L2/L14). Their archetypes are wired
+# and render fine with labels off — but a golden should capture the default
+# pipeline. Add them once the label engine gains a fallback.
 GOLDEN_CASES: dict[str, dict[str, str] | None] = {
     "addition_reaction.json": {"alkene": "CC=C", "water": "O", "product": "CC(O)C"},
+    "cellular_schematic.json": None,
     "drug_inhibition.json": None,
     "gpcr_signaling.json": None,
     "mapk_cascade.json": None,

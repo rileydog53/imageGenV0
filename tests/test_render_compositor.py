@@ -180,21 +180,26 @@ def test_render_figure_format_kwarg_overrides_suffix(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_unwired_leaf_archetype_raises_not_implemented(tmp_path):
-    """Leaf WORKFLOW (no panels) is still unwired at the compositor level.
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "western_blot_schematic.json",  # WORKFLOW
+        "cellular_schematic.json",  # CELLULAR_SCHEMATIC
+        "mechanism_cartoon.json",  # MECHANISM_CARTOON
+    ],
+)
+def test_pathway_compatible_leaf_archetype_renders(fixture, tmp_path):
+    """Leaf WORKFLOW / CELLULAR_SCHEMATIC / MECHANISM_CARTOON figures route
+    through layout_pathway — wired in Phase 7 (previously NotImplementedError).
 
-    Repurposed from the Step 2 fixture-based version: three_panel_workflow
-    now dispatches successfully through layout_panel, so the unwired path
-    is exercised here with an inline panel-less WORKFLOW figure.
+    Rendered with labels off: this isolates the dispatch fix from the greedy
+    label engine, which overflows on some of these fixtures (BACKLOG L2/L14).
     """
-    ir = Figure(
-        archetype=Archetype.WORKFLOW,
-        entities=[{"id": "a", "type": "sample", "label": "A"}],
-        relations=[],
-    )
+    ir = load_fixture(fixture)
     assert not ir.panels
-    with pytest.raises(NotImplementedError, match="WORKFLOW|workflow"):
-        render_figure(ir, tmp_path / "fig.svg")
+    out = render_figure(ir, tmp_path / f"{Path(fixture).stem}.svg", labels=False)
+    assert out.exists() and out.stat().st_size > 0
+    ET.parse(str(out))  # well-formed SVG
 
 
 def test_pathway_archetype_does_not_raise(tmp_path):
