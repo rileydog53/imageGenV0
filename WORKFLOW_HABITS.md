@@ -28,12 +28,11 @@ Stop and consolidate when any of these are true:
 | Signal | Action |
 |---|---|
 | `BACKLOG.md` Cleanup bucket has 3+ High items | Do a cleanup commit before starting the next phase |
-| `tests/conftest.py` still missing `_load_fixture` / `_render_to_png` (item C3) | Fix it — 9 files duplicating helpers will bite you in Phase 6 |
 | You've just finished a phase | Don't start the next one — do one cleanup pass on the C-bucket first |
 | A session ended mid-step | Verify state and re-scope before continuing |
 
-**Currently overdue:** C1 (`LayoutEntry` promotion), C2 (`_ENTITY_BBOX` → `_geom.py`), C3 (`conftest.py` helpers).
-All three are High-priority. Resolve before Phase 5 ships.
+**Cleanup status:** C1/C2/C3 were resolved in the pre–Phase 5 cleanup
+(2026-05-11). C4/C5 remain (Low/Medium) — see `BACKLOG.md`.
 
 ---
 
@@ -99,6 +98,5 @@ project table, push a `v1.0` tag.
 
 ## Biggest Current Exposure
 
-C1/C2/C3 cleanup is overdue and compounds in Phases 5–6.
-No push cadence means a disk failure loses everything since Phase 0.
-Fix both before Phase 5 implementation begins.
+Push cadence: tag + push at every phase boundary — a disk failure between
+pushes loses everything since the last one.
