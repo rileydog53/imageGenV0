@@ -184,9 +184,10 @@ def _dispatch_layout(
 
     Multi-panel figures (`ir.panels` populated) dispatch to
     `layout_panel` regardless of top-level archetype. Leaf figures
-    dispatch on `ir.archetype`: PATHWAY → layout_pathway,
-    REACTION_SCHEME → layout_reaction. Remaining archetypes raise
-    NotImplementedError.
+    dispatch on `ir.archetype`: every pathway-compatible archetype
+    (PATHWAY, WORKFLOW, CELLULAR_SCHEMATIC, MECHANISM_CARTOON) →
+    layout_pathway, REACTION_SCHEME → layout_reaction. The trailing
+    NotImplementedError guards any future archetype enum addition.
 
     The flat `smiles_map: {entity_id: SMILES}` is adapted to the nested
     `{panel.id: smiles_map}` shape that `layout_panel` expects — entity
@@ -198,7 +199,7 @@ def _dispatch_layout(
             {p.id: smiles_map for p in ir.panels} if smiles_map else None
         )
         return layout_panel(ir, smiles_maps=smiles_maps, style_dict=style_dict)
-    if ir.archetype == Archetype.PATHWAY:
+    if ir.archetype in _PATHWAY_COMPATIBLE_ARCHETYPES:
         return layout_pathway(ir, style_dict=style_dict)
     if ir.archetype == Archetype.REACTION_SCHEME:
         if smiles_map is None:
