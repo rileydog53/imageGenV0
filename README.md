@@ -17,9 +17,9 @@ You're working as the **builder** in a 3-role team (you, a senior architect, and
 
 ### Quick Context
 
-- **Phase:** 7 (LLM frontend) next — Phases 0–6 complete
-- **Tests:** 358 passing ✅
-- **Next task:** See `~/Desktop/TODO.txt` IN PROGRESS — Phase 7 `SKILL.md`
+- **Phase:** 8 (integration & polish) next — Phases 0–7 complete
+- **Tests:** 361 passing ✅
+- **Next task:** See `~/Desktop/TODO.txt` IN PROGRESS — Phase 8
 - **Venv:** `~/Desktop/.venv` (Python 3.12, auto-activated in Terminal)
 - **Key files:** `ir/schema.py` (don't change), `layout/reaction_layout.py` (pattern to follow), `tests/fixtures/` (example IRs)
 
@@ -46,10 +46,10 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
 | 5 | Renderer & compositor | ✅ Done (2026-05-14, all 6 steps: PATHWAY + REACTION_SCHEME + PANEL dispatch in `compositor.py`; PNG + PDF via `render/export.py`; package restructured to `imageGenV0/`; argparse CLI in `render/cli.py`) |
 | 6 | Verification suite | ✅ Done (4 steps: `verify/semantic_check.py`, `verify/legibility_check.py`, `verify/convention_check.py`, golden-image regression) |
-| 7 | LLM frontend (`SKILL.md`) | ⬜ Pending |
+| 7 | LLM frontend (`SKILL.md`) | ✅ Done (model-facing `SKILL.md`; compositor wired for all 5 archetypes) |
 | 8 | Integration & polish | ⬜ Pending |
 
-Current test count: **358 green**. Phases 0–6 complete.
+Current test count: **361 green**. Phases 0–7 complete.
 
 Per-step detail (what shipped, commit SHAs, locked design decisions) lives in
 `~/Desktop/TODO.txt` COMPLETED section. Cross-phase architectural decisions
@@ -65,9 +65,15 @@ Recent highlights:
   rendered SVG — `semantic_check` (every IR element present),
   `legibility_check` (text overlap / undersized fonts; returns a `needs_crop`
   signal), `convention_check` (inhibition T-bars, entity shape by type) — plus
-  golden-image regression (`tests/test_golden_images.py`): 11 curated fixtures
+  golden-image regression (`tests/test_golden_images.py`): 12 curated fixtures
   rendered and pixel-diffed against checked-in goldens in `tests/golden/`.
   Regenerate goldens with `IMAGEGENV0_REGEN_GOLDEN=1 pytest`.
+- **Phase 7:** `SKILL.md` (repo root) — the model-facing interface: trigger
+  rules, the mandatory classify → IR → render → verify workflow, IR reference,
+  refusal scripts, and an archetype cookbook. The compositor's `_dispatch_layout`
+  now routes all pathway-compatible archetypes (WORKFLOW, CELLULAR_SCHEMATIC,
+  MECHANISM_CARTOON) to `layout_pathway`, so all five archetypes render
+  standalone.
 - **Layout/test homes:** `LayoutEntry` in `layout/types.py`; `ENTITY_BBOX` +
   `ENTITY_TO_PRIMITIVE` in `layout/_geom.py`; shared test helpers in
   `tests/_helpers.py`. Tags: `phase-4-complete`, `pre-phase-5-cleanup`.

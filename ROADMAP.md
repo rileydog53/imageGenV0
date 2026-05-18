@@ -1,6 +1,6 @@
 # imageGenV0 — Project Roadmap
 
-**Status:** Phase 7 (LLM Frontend) next — Phases 0–6 complete.
+**Status:** Phase 8 (Integration & Polish) next — Phases 0–7 complete.
 
 ## Quick Status
 
@@ -13,14 +13,14 @@
 | 4 | Style Presets | ✅ DONE |
 | 5 | Renderer & Compositor | ✅ DONE |
 | 6 | Verification | ✅ DONE |
-| 7 | LLM Frontend (SKILL.md) | ⏳ PENDING |
+| 7 | LLM Frontend (SKILL.md) | ✅ DONE |
 | 8 | Integration & Polish | ⏳ PENDING |
 
-**Total tests passing:** 358 green ✅
+**Total tests passing:** 361 green ✅
 
 ---
 
-## What's Done (Phases 0–6)
+## What's Done (Phases 0–7)
 
 - **Phase 0:** Project initialized, deps installed, 22 smoke tests.
 - **Phase 1:** Complete IR schema (Pydantic models + validators), 12 fixture JSONs.
@@ -34,6 +34,9 @@
 - **Phase 6:** verification suite — `semantic_check.py`, `legibility_check.py`,
   `convention_check.py` (fail-loud audits over the rendered SVG), plus
   golden-image regression (`tests/test_golden_images.py` + `tests/golden/`).
+- **Phase 7:** `SKILL.md` — the model-facing interface (trigger rules,
+  classify → IR → render → verify workflow, IR reference, refusal scripts,
+  cookbook). Compositor wired so all 5 archetypes render standalone.
 
 See `~/Desktop/TODO.txt` COMPLETED section for per-step detail + commit SHAs.
 
@@ -41,12 +44,9 @@ See `~/Desktop/TODO.txt` COMPLETED section for per-step detail + commit SHAs.
 
 ## What's Next
 
-### Phase 7: LLM frontend — `SKILL.md`
-The model-facing interface: trigger rules, mandatory workflow checklist,
-refusal scripts, example IR JSONs, cookbook.
-
 ### Phase 8: Integration & polish
-End-to-end test, human README, documented limitations, feedback log.
+End-to-end test (a real prompt → figure), human README, documented
+limitations, feedback log.
 
 ---
 
