@@ -11,7 +11,7 @@ import math
 import svgwrite
 import svgwrite.container
 
-from imageGenV0.primitives.proteins import (
+from imageGen.primitives.proteins import (
     DEFAULT_STYLE,
     generic_protein,
     gpcr,

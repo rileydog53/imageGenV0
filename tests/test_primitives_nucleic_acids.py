@@ -12,7 +12,7 @@ from __future__ import annotations
 import svgwrite
 import svgwrite.container
 
-from imageGenV0.primitives.nucleic_acids import (
+from imageGen.primitives.nucleic_acids import (
     DEFAULT_STYLE,
     chromatin,
     dna_segment,

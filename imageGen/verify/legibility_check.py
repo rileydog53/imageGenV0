@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from imageGenV0.layout.label_placement import Bbox, _estimate_text_bbox, _overlaps
+from imageGen.layout.label_placement import Bbox, _estimate_text_bbox, _overlaps
 
 _Kind = Literal["overlap", "font_size"]
 

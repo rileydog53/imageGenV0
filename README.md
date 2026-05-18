@@ -1,4 +1,4 @@
-# imageGenV0
+# imageGen
 
 Scientific figure generation skill — vector-first, IR-driven. Produces publication-style schematics, pathway diagrams, reaction schemes, and graphical abstracts from natural-language prompts.
 
@@ -44,7 +44,7 @@ Then follow the step workflow: **Scope → Test plan → Implement → Verify �
 | 2 | Primitive library (arrows → proteins → membranes → …) | ✅ Done (2026-05-06, all 7 modules complete: arrows, proteins, membranes, nucleic_acids, cells, chemistry, lab_equipment) |
 | 3 | Layout engines | ✅ Done (2026-05-10, all 4 steps: `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) |
 | 4 | Style presets | ✅ Done (2026-05-10, three JSON presets + Pydantic-validated `loader.py`) |
-| 5 | Renderer & compositor | ✅ Done (2026-05-14, all 6 steps: PATHWAY + REACTION_SCHEME + PANEL dispatch in `compositor.py`; PNG + PDF via `render/export.py`; package restructured to `imageGenV0/`; argparse CLI in `render/cli.py`) |
+| 5 | Renderer & compositor | ✅ Done (2026-05-14, all 6 steps: PATHWAY + REACTION_SCHEME + PANEL dispatch in `compositor.py`; PNG + PDF via `render/export.py`; package restructured to `imageGen/`; argparse CLI in `render/cli.py`) |
 | 6 | Verification suite | ✅ Done (4 steps: `verify/semantic_check.py`, `verify/legibility_check.py`, `verify/convention_check.py`, golden-image regression) |
 | 7 | LLM frontend (`SKILL.md`) | ✅ Done (model-facing `SKILL.md`; compositor wired for all 5 archetypes) |
 | 8 | Integration & polish | ⬜ Pending |
@@ -59,15 +59,15 @@ Per-step detail (what shipped, commit SHAs, locked design decisions) lives in
 Recent highlights:
 - **Phase 5:** `render/compositor.py` dispatches PATHWAY / REACTION_SCHEME /
   multi-panel figures; `render/export.py` adds cairosvg-backed PNG + PDF;
-  repo restructured into an installable `imageGenV0/` package; argparse CLI
-  via `python -m imageGenV0`.
+  repo restructured into an installable `imageGen/` package; argparse CLI
+  via `python -m imageGen`.
 - **Phase 6:** four-part verification suite. Three fail-loud audits over the
   rendered SVG — `semantic_check` (every IR element present),
   `legibility_check` (text overlap / undersized fonts; returns a `needs_crop`
   signal), `convention_check` (inhibition T-bars, entity shape by type) — plus
   golden-image regression (`tests/test_golden_images.py`): 12 curated fixtures
   rendered and pixel-diffed against checked-in goldens in `tests/golden/`.
-  Regenerate goldens with `IMAGEGENV0_REGEN_GOLDEN=1 pytest`.
+  Regenerate goldens with `IMAGEGEN_REGEN_GOLDEN=1 pytest`.
 - **Phase 7:** `SKILL.md` (repo root) — the model-facing interface: trigger
   rules, the mandatory classify → IR → render → verify workflow, IR reference,
   refusal scripts, and an archetype cookbook. The compositor's `_dispatch_layout`
@@ -84,7 +84,7 @@ The full implementation plan lives in `~/Desktop/TODO.txt` (master) and is mirro
 
 ## Project Conventions
 
-- **Dev location:** `~/Desktop/imageGenV0/` (graduates to `claudeFinished/WIP/imageGenV0/` when stable).
+- **Location:** `~/Desktop/imageGen-v0.1/` — graduated to a versioned project folder (v0.1, 2026-05-18).
 - **Python:** uses the shared venv at `~/Desktop/.venv` (Python 3.12). Don't create a project-local venv.
 - **Throwaway scripts:** go in `~/Desktop/scratch/`, never inside this repo.
 - **Future-proofing:** Each primitive module uses composable private helpers (`_helper_name`), flat namespaced style keys (`module_*`), and optional params that default to "off". Phase-aware design notes in module docstrings explain how a function will couple to future modules (e.g., the `anchor_at` protocol). New variants extend existing helpers — never duplicate logic.

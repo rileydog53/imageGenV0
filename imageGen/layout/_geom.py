@@ -12,8 +12,8 @@ from typing import Callable
 
 import svgwrite.container
 
-from imageGenV0.ir.schema import EntityType
-from imageGenV0.primitives import proteins
+from imageGen.ir.schema import EntityType
+from imageGen.primitives import proteins
 
 # Per-EntityType bounding boxes (w, h), tracking each primitive's default
 # size in `primitives/proteins.py`. Used to inset arrow endpoints to the

@@ -58,9 +58,9 @@ from typing import Any
 
 import svgwrite.container
 
-from imageGenV0.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
-from imageGenV0.layout.types import LayoutEntry
-from imageGenV0.primitives import proteins
+from imageGen.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
+from imageGen.layout.types import LayoutEntry
+from imageGen.primitives import proteins
 
 
 # ---------------------------------------------------------------------------

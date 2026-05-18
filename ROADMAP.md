@@ -1,4 +1,4 @@
-# imageGenV0 — Project Roadmap
+# imageGen — Project Roadmap
 
 **Status:** Phase 8 (Integration & Polish) next — Phases 0–7 complete.
 
@@ -29,8 +29,8 @@
 - **Phase 3:** 4 layout engines (reaction, pathway, panel, label_placement).
 - **Phase 4:** 3 JSON style presets (cell_press, nature, acs) + Pydantic loader.
 - **Phase 5:** `render/compositor.py` dispatches PATHWAY / REACTION_SCHEME /
-  multi-panel figures; PNG + PDF export; package restructured to `imageGenV0/`;
-  argparse CLI (`python -m imageGenV0`).
+  multi-panel figures; PNG + PDF export; package restructured to `imageGen/`;
+  argparse CLI (`python -m imageGen`).
 - **Phase 6:** verification suite — `semantic_check.py`, `legibility_check.py`,
   `convention_check.py` (fail-loud audits over the rendered SVG), plus
   golden-image regression (`tests/test_golden_images.py` + `tests/golden/`).
@@ -81,7 +81,7 @@ limitations, feedback log.
 3. **Every primitive gets a golden-image test.**
 4. **Plan before code.** Propose, get a green light, then build.
 5. **Conventions over creativity.** Follow how Nature/Cell draws it.
-6. **All files live in `~/Desktop/imageGenV0/` during dev.**
+6. **All files live in `~/Desktop/imageGen-v0.1/` during dev.**
 
 (Full Hard Rules + Workflow Lessons are in `~/Desktop/TODO.txt`.)
 

@@ -5,16 +5,16 @@ import pytest
 import svgwrite
 import svgwrite.container
 
-from imageGenV0.ir.schema import (
+from imageGen.ir.schema import (
     Archetype, Entity, EntityType, Figure, ReactionConditions,
     Relation, RelationType,
 )
-from imageGenV0.layout.reaction_layout import (
+from imageGen.layout.reaction_layout import (
     DEFAULT_LAYOUT_PARAMS,
     layout_reaction,
 )
-from imageGenV0.layout.types import LayoutEntry
-from imageGenV0.primitives.chemistry import render_reaction
+from imageGen.layout.types import LayoutEntry
+from imageGen.primitives.chemistry import render_reaction
 from tests._helpers import load_fixture, render_group_to_png
 
 ESTERIFICATION_SMILES = {

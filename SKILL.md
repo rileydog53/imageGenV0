@@ -1,4 +1,4 @@
-# imageGenV0 — Scientific Figure Generation
+# imageGen — Scientific Figure Generation
 
 Generate publication-style schematic figures — pathway diagrams, reaction
 schemes, experimental workflows, cellular schematics, mechanism cartoons, and
@@ -12,7 +12,7 @@ image generator and not a data-plotting tool.
 
 ## When to trigger this skill
 
-Use imageGenV0 when the user asks for a **schematic scientific figure**:
+Use imageGen when the user asks for a **schematic scientific figure**:
 
 - A signalling or metabolic **pathway** ("show the MAPK cascade", "diagram how
   insulin signalling works")
@@ -49,7 +49,7 @@ Follow these steps in order. Do not skip the IR or the verification step.
 3. **Write** the IR to a JSON file (e.g. `figure.json`).
 4. **Validate** it before rendering:
    ```python
-   from imageGenV0.ir.schema import Figure
+   from imageGen.ir.schema import Figure
    ir = Figure.model_validate_json(open("figure.json").read_text())
    ```
    A `pydantic.ValidationError` means the IR is malformed — read the message,
@@ -62,7 +62,7 @@ Follow these steps in order. Do not skip the IR or the verification step.
    an IR field. Write it to its own JSON file for the CLI.
 6. **Render** via the CLI:
    ```
-   python -m imageGenV0 figure.json -o figure.png [--style nature]
+   python -m imageGen figure.json -o figure.png [--style nature]
                          [--smiles-map smiles.json] [--dpi 300]
    ```
    A PNG/PDF render also writes a sibling `figure.svg` next to it — the
@@ -70,9 +70,9 @@ Follow these steps in order. Do not skip the IR or the verification step.
 7. **Verify** the rendered SVG and surface any failure (fail loud — do not
    swallow the exception):
    ```python
-   from imageGenV0.verify.semantic_check import semantic_check
-   from imageGenV0.verify.legibility_check import legibility_check
-   from imageGenV0.verify.convention_check import convention_check
+   from imageGen.verify.semantic_check import semantic_check
+   from imageGen.verify.legibility_check import legibility_check
+   from imageGen.verify.convention_check import convention_check
    semantic_check(ir, "figure.svg")     # every IR element present?
    legibility_check("figure.svg")       # no overlapping / undersized labels?
    convention_check(ir, "figure.svg")   # inhibition T-bars, correct shapes?
@@ -198,10 +198,10 @@ Pass `--style` (or `style_preset` in the IR) to pick a journal aesthetic:
 When a request falls outside scope, decline plainly and redirect:
 
 - **Fabricated data plot** — "I can't generate a chart that looks like real
-  measured data, since that would be misleading. imageGenV0 produces
+  measured data, since that would be misleading. imageGen produces
   schematic figures only. If you have an actual dataset I can help you plot
   it with a plotting library instead."
-- **Photorealistic image** — "imageGenV0 draws schematic, vector-style
+- **Photorealistic image** — "imageGen draws schematic, vector-style
   scientific figures, not photorealistic images. I can make a clean
   schematic of this if that works for you."
 - **3D molecular structure** — "This skill renders 2D schematics. For a 3D
@@ -211,10 +211,10 @@ When a request falls outside scope, decline plainly and redirect:
 
 ## Pointers
 
-- **Primitives** (`imageGenV0/primitives/`): proteins, membranes, nucleic
+- **Primitives** (`imageGen/primitives/`): proteins, membranes, nucleic
   acids, cells, chemistry (RDKit), lab equipment, arrows — assembled
   automatically by the layout engines; you author the IR, not primitives.
-- **CLI** (`python -m imageGenV0`): `IR_PATH -o OUT` plus optional
+- **CLI** (`python -m imageGen`): `IR_PATH -o OUT` plus optional
   `--style {cell_press,nature,acs}`, `--format {svg,png,pdf}` (else inferred
   from the output suffix), `--dpi N` (default 300), `--smiles-map FILE.json`,
   `--no-labels`.
@@ -237,7 +237,7 @@ Worked examples — each `tests/fixtures/<file>` is a complete, validated IR.
 1. **"Show the MAPK kinase cascade."** → `pathway`. Entities Ras (protein),
    Raf/MEK/ERK (kinases); relations `activates` then `phosphorylates`.
    See `tests/fixtures/mapk_cascade.json`. Render:
-   `python -m imageGenV0 tests/fixtures/mapk_cascade.json -o mapk.png`.
+   `python -m imageGen tests/fixtures/mapk_cascade.json -o mapk.png`.
 
 2. **"Diagram a GPCR signalling event across the membrane."** → `pathway`
    with compartments (`extracellular`, `membrane`, `cytoplasm`); entities
@@ -252,7 +252,7 @@ Worked examples — each `tests/fixtures/<file>` is a complete, validated IR.
    (`reagents`, `notes`). Build `smiles_map`
    `{"alcohol": "CCO", "aldehyde": "CC=O"}`. See
    `tests/fixtures/oxidation_reaction.json`. Render:
-   `python -m imageGenV0 tests/fixtures/oxidation_reaction.json -o rxn.png
+   `python -m imageGen tests/fixtures/oxidation_reaction.json -o rxn.png
    --smiles-map smiles.json`.
 
 5. **"Cartoon the SN2 substitution mechanism."** → `mechanism_cartoon` with

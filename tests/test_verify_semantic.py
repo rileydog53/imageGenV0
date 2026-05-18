@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from imageGenV0.ir.schema import Relation, RelationType
-from imageGenV0.render.compositor import render_figure
-from imageGenV0.verify.semantic_check import SemanticCheckError, semantic_check
+from imageGen.ir.schema import Relation, RelationType
+from imageGen.render.compositor import render_figure
+from imageGen.verify.semantic_check import SemanticCheckError, semantic_check
 from tests._helpers import load_fixture
 
 MAPK = "mapk_cascade.json"

@@ -6,11 +6,11 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from imageGenV0.ir.schema import Figure
-from imageGenV0.layout.pathway_layout import layout_pathway
-from imageGenV0.layout.reaction_layout import layout_reaction
-from imageGenV0.layout.types import LayoutEntry
-from imageGenV0.styles.loader import (
+from imageGen.ir.schema import Figure
+from imageGen.layout.pathway_layout import layout_pathway
+from imageGen.layout.reaction_layout import layout_reaction
+from imageGen.layout.types import LayoutEntry
+from imageGen.styles.loader import (
     DEFAULT_PRESET,
     PRESET_DIR,
     StylePreset,
@@ -89,7 +89,7 @@ def test_load_style_invalid_palette_length_raises(tmp_path, monkeypatch):
         "palette": ["#000000", "#FFFFFF"],  # only 2
         "overrides": {},
     }))
-    monkeypatch.setattr("imageGenV0.styles.loader.PRESET_DIR", tmp_path)
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
     with pytest.raises(ValidationError, match="palette"):
         load_preset_full("broken")
 
@@ -101,7 +101,7 @@ def test_load_style_invalid_hex_raises(tmp_path, monkeypatch):
         "palette": ["red"] * 8,  # not hex
         "overrides": {},
     }))
-    monkeypatch.setattr("imageGenV0.styles.loader.PRESET_DIR", tmp_path)
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
     with pytest.raises(ValidationError, match="hex"):
         load_preset_full("broken")
 
@@ -115,7 +115,7 @@ def test_load_style_unknown_extra_field_raises(tmp_path, monkeypatch):
         "overrides": {},
         "stray_field": "uh oh",
     }))
-    monkeypatch.setattr("imageGenV0.styles.loader.PRESET_DIR", tmp_path)
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
     with pytest.raises(ValidationError):
         load_preset_full("broken")
 
@@ -126,7 +126,7 @@ def test_load_style_unknown_extra_field_raises(tmp_path, monkeypatch):
 
 def test_overrides_plumb_to_primitive_render():
     """Loading nature should change the SVG fill on a generic_protein."""
-    from imageGenV0.primitives import proteins
+    from imageGen.primitives import proteins
 
     style = load_style("nature")
     g = proteins.generic_protein("X", (50, 50), style_dict=style)
@@ -137,7 +137,7 @@ def test_overrides_plumb_to_primitive_render():
 def test_overrides_dont_break_primitives_with_missing_keys():
     """A sparse preset (missing most primitive keys) must still render
     every primitive — primitive DEFAULT_STYLE fills the gaps."""
-    from imageGenV0.primitives import arrows, membranes, proteins
+    from imageGen.primitives import arrows, membranes, proteins
     style = load_style("cell_press")  # has only ~15 keys
 
     # Each call must succeed without KeyError (primitives merge with their

@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from imageGenV0.ir.schema import Archetype, Figure
-from imageGenV0.render.compositor import (
+from imageGen.ir.schema import Archetype, Figure
+from imageGen.render.compositor import (
     _needs_watermark,
     _resolve_format,
     _resolve_style,
@@ -81,9 +81,9 @@ def test_style_kwarg_overrides_ir_preset(tmp_path):
 
 def test_style_falls_back_to_cell_press_when_neither_set(tmp_path):
     # _resolve_style with no kwarg and no ir.style_preset should use DEFAULT_PRESET
-    from imageGenV0.ir.schema import Figure, Archetype
-    from imageGenV0.render.compositor import _resolve_style
-    from imageGenV0.styles.loader import DEFAULT_PRESET, load_style
+    from imageGen.ir.schema import Figure, Archetype
+    from imageGen.render.compositor import _resolve_style
+    from imageGen.styles.loader import DEFAULT_PRESET, load_style
     ir = load_fixture(MAPK)
     ir_no_preset = ir.model_copy(update={"style_preset": None})
     assert ir_no_preset.style_preset is None
@@ -94,13 +94,13 @@ def test_style_falls_back_to_cell_press_when_neither_set(tmp_path):
 def test_resolve_style_prefers_kwarg_over_ir():
     ir = load_fixture(MAPK)
     d = _resolve_style(ir, "nature")
-    from imageGenV0.styles.loader import load_style
+    from imageGen.styles.loader import load_style
     assert d == load_style("nature")
 
 
 def test_resolve_style_falls_back_to_default():
     ir = load_fixture(MAPK)
-    from imageGenV0.styles.loader import DEFAULT_PRESET, load_style
+    from imageGen.styles.loader import DEFAULT_PRESET, load_style
     d = _resolve_style(ir, None)
     assert d == load_style(DEFAULT_PRESET)
 

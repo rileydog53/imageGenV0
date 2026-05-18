@@ -6,20 +6,20 @@ import svgwrite
 import svgwrite.container
 
 from tests._helpers import load_fixture, render_entries_to_png
-from imageGenV0.ir.schema import (
+from imageGen.ir.schema import (
     Archetype, Compartment, CompartmentType, Entity, EntityType,
     Figure, Relation, RelationType,
 )
-from imageGenV0.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
-from imageGenV0.layout.pathway_layout import (
+from imageGen.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
+from imageGen.layout.pathway_layout import (
     DEFAULT_LAYOUT_PARAMS,
     RELATION_TO_ARROW,
     _bbox_exit_point,
     _compartment_band,
     layout_pathway,
 )
-from imageGenV0.layout.types import LayoutEntry
-from imageGenV0.primitives import arrows, proteins
+from imageGen.layout.types import LayoutEntry
+from imageGen.primitives import arrows, proteins
 
 
 def _entity_entries(entries: list[LayoutEntry]) -> list[LayoutEntry]:

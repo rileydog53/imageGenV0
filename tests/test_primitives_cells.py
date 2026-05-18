@@ -14,14 +14,14 @@ from __future__ import annotations
 import svgwrite
 import svgwrite.container
 
-from imageGenV0.primitives.cells import (
+from imageGen.primitives.cells import (
     DEFAULT_STYLE,
     cell_outline,
     compose_cell,
     organelle,
 )
-from imageGenV0.primitives.membranes import MembraneCurve
-from imageGenV0.primitives.proteins import receptor
+from imageGen.primitives.membranes import MembraneCurve
+from imageGen.primitives.proteins import receptor
 from tests._helpers import render_group_to_png
 
 

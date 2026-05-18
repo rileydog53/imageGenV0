@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from imageGenV0.render.compositor import render_figure
-from imageGenV0.verify.legibility_check import (
+from imageGen.render.compositor import render_figure
+from imageGen.verify.legibility_check import (
     LegibilityCheckError,
     LegibilityResult,
     legibility_check,

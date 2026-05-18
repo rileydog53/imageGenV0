@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from imageGenV0.ir.schema import (
+from imageGen.ir.schema import (
     Archetype,
     Entity,
     EntityType,
@@ -24,8 +24,8 @@ from imageGenV0.ir.schema import (
     Relation,
     RelationType,
 )
-from imageGenV0.render.compositor import render_figure
-from imageGenV0.verify.convention_check import ConventionCheckError, convention_check
+from imageGen.render.compositor import render_figure
+from imageGen.verify.convention_check import ConventionCheckError, convention_check
 from tests._helpers import load_fixture
 
 DRUG_INHIBITION = "drug_inhibition.json"

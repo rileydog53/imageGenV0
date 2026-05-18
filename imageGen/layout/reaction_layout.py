@@ -48,9 +48,9 @@ from typing import Any
 
 import svgwrite.container
 
-from imageGenV0.ir.schema import Archetype, Figure, ReactionConditions
-from imageGenV0.layout.types import LayoutEntry
-from imageGenV0.primitives.chemistry import render_reaction
+from imageGen.ir.schema import Archetype, Figure, ReactionConditions
+from imageGen.layout.types import LayoutEntry
+from imageGen.primitives.chemistry import render_reaction
 
 
 # ---------------------------------------------------------------------------

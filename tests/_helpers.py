@@ -27,8 +27,8 @@ import svgwrite
 import svgwrite.container
 from PIL import Image
 
-from imageGenV0.ir.schema import Figure
-from imageGenV0.layout.types import LayoutEntry
+from imageGen.ir.schema import Figure
+from imageGen.layout.types import LayoutEntry
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FIGURES_DIR = Path(__file__).parent / "figures"

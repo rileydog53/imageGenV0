@@ -1,8 +1,8 @@
-"""Command-line entry point for imageGenV0.
+"""Command-line entry point for imageGen.
 
 Wraps `render_figure` so an IR JSON file can be rendered from the shell:
 
-    python -m imageGenV0 IR_PATH --output OUT [--style ...] [--format ...]
+    python -m imageGen IR_PATH --output OUT [--style ...] [--format ...]
                                  [--dpi N] [--smiles-map FILE.json]
                                  [--no-labels]
 """
@@ -13,15 +13,15 @@ import json
 from pathlib import Path
 from typing import get_args
 
-from imageGenV0.ir.schema import Figure
-from imageGenV0.render.compositor import Format, render_figure
-from imageGenV0.styles.loader import list_presets
+from imageGen.ir.schema import Figure
+from imageGen.render.compositor import Format, render_figure
+from imageGen.styles.loader import list_presets
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m imageGenV0",
-        description="Render an imageGenV0 IR JSON file to SVG, PNG, or PDF.",
+        prog="python -m imageGen",
+        description="Render an imageGen IR JSON file to SVG, PNG, or PDF.",
     )
     parser.add_argument("ir_path", metavar="IR_PATH", help="Path to IR JSON file.")
     parser.add_argument(

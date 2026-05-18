@@ -1,7 +1,7 @@
 """Tests for render/cli.py — Phase 5 Step 6.
 
 Covers the argparse CLI wrapper around `render_figure`, exercised both
-through direct `main()` calls and via one end-to-end `python -m imageGenV0`
+through direct `main()` calls and via one end-to-end `python -m imageGen`
 subprocess invocation.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sys
 import pytest
 from PIL import Image
 
-from imageGenV0.render.cli import main
+from imageGen.render.cli import main
 from tests._helpers import FIXTURES_DIR
 
 MAPK = str(FIXTURES_DIR / "mapk_cascade.json")
@@ -65,7 +65,7 @@ def test_main_loads_smiles_map_for_reaction_scheme(tmp_path):
 def test_python_m_invocation_writes_file(tmp_path):
     out = tmp_path / "fig.svg"
     result = subprocess.run(
-        [sys.executable, "-m", "imageGenV0", MAPK, "-o", str(out)],
+        [sys.executable, "-m", "imageGen", MAPK, "-o", str(out)],
         check=True,
         capture_output=True,
         text=True,

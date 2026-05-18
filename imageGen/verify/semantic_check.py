@@ -31,9 +31,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Literal
 
-from imageGenV0.ir.schema import Archetype, Figure
-from imageGenV0.layout.reaction_layout import REACTION_GROUP_IR_ID
-from imageGenV0.render.compositor import scoped_id
+from imageGen.ir.schema import Archetype, Figure
+from imageGen.layout.reaction_layout import REACTION_GROUP_IR_ID
+from imageGen.render.compositor import scoped_id
 
 _Kind = Literal["entity", "compartment", "relation", "reaction"]
 

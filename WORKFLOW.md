@@ -1,6 +1,6 @@
 # Team Workflow — GitHub Issues & PRs
 
-How the product owner, senior dev, and junior dev work together on imageGenV0.
+How the product owner, senior dev, and junior dev work together on imageGen.
 
 ---
 

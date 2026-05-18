@@ -43,10 +43,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Iterator, Literal
 
-from imageGenV0.ir.schema import Archetype, Figure, RelationType
-from imageGenV0.layout._geom import ENTITY_TO_PRIMITIVE
-from imageGenV0.primitives import proteins
-from imageGenV0.render.compositor import scoped_id
+from imageGen.ir.schema import Archetype, Figure, RelationType
+from imageGen.layout._geom import ENTITY_TO_PRIMITIVE
+from imageGen.primitives import proteins
+from imageGen.render.compositor import scoped_id
 
 _Kind = Literal["inhibition_arrow", "entity_shape"]
 

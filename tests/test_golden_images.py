@@ -12,7 +12,7 @@ on every run by the ``render_*_to_png`` helpers and is not a stable baseline.
 Regenerating goldens is opt-in and never silent. After an *intentional*
 visual change::
 
-    IMAGEGENV0_REGEN_GOLDEN=1 ~/Desktop/.venv/bin/pytest tests/test_golden_images.py
+    IMAGEGEN_REGEN_GOLDEN=1 ~/Desktop/.venv/bin/pytest tests/test_golden_images.py
 
 In regen mode each golden test writes its image and is skipped instead of
 compared. Eyeball the regenerated PNGs before committing them.
@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from imageGenV0.render.compositor import render_figure
+from imageGen.render.compositor import render_figure
 from tests._helpers import compare_pngs, load_fixture
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
@@ -38,7 +38,7 @@ GOLDEN_DPI = 96
 # may shift across cairo/font-toolchain versions.
 MAX_DIFF_FRACTION = 0.005
 
-REGEN = os.environ.get("IMAGEGENV0_REGEN_GOLDEN") == "1"
+REGEN = os.environ.get("IMAGEGEN_REGEN_GOLDEN") == "1"
 
 # Curated set: every fixture that renders cleanly through the default
 # pipeline, mapped to its smiles_map. REACTION_SCHEME fixtures require one
@@ -92,13 +92,13 @@ def test_golden_image(fixture_name: str, tmp_path: Path) -> None:
         pytest.skip(f"regenerated golden: {golden.name}")
 
     assert golden.exists(), (
-        f"missing golden {golden} — regenerate with IMAGEGENV0_REGEN_GOLDEN=1"
+        f"missing golden {golden} — regenerate with IMAGEGEN_REGEN_GOLDEN=1"
     )
     diff = compare_pngs(golden, rendered)
     assert diff <= MAX_DIFF_FRACTION, (
         f"{fixture_name}: {diff:.4%} of pixels differ from the golden "
         f"(max {MAX_DIFF_FRACTION:.4%}) — a visual regression, or rerun with "
-        f"IMAGEGENV0_REGEN_GOLDEN=1 if the change is intentional"
+        f"IMAGEGEN_REGEN_GOLDEN=1 if the change is intentional"
     )
 
 

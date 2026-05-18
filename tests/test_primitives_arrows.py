@@ -9,7 +9,7 @@ from __future__ import annotations
 import svgwrite
 import svgwrite.container
 
-from imageGenV0.primitives.arrows import (
+from imageGen.primitives.arrows import (
     activation_arrow,
     binding_arrow,
     inhibition_arrow,

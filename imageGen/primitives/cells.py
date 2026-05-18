@@ -44,7 +44,7 @@ import svgwrite
 import svgwrite.container
 import svgwrite.shapes
 
-from imageGenV0.primitives.membranes import MembraneCurve, nuclear_envelope
+from imageGen.primitives.membranes import MembraneCurve, nuclear_envelope
 
 # ---------------------------------------------------------------------------
 # Style defaults -- flat namespaced keys for Phase 4 preset union

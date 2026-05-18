@@ -1,4 +1,4 @@
-# Workflow Habits — imageGenV0
+# Workflow Habits — imageGen
 
 Cheat sheet for sustainable session-to-session development.
 Read this at the start of any session where you're not sure what state you're in.
@@ -77,22 +77,17 @@ All acceptance-criteria tests pass, `/simplify` has run, three commits are on `m
 
 ---
 
-## Graduation Signals
+## Graduation Status
 
-### `imageGenV0/` → `claudeFinished/WIP/imageGenV0/`
-- Phase 7 (LLM frontend / `SKILL.md`) is complete
-- Skill accepts a natural-language prompt and returns a valid SVG
-- Tests pass, golden images exist, `SKILL.md` is written
-- *Don't move it just because the renderer works — it needs a real entry point*
+**Graduated 2026-05-18 (v0.1).** The project moved to `~/Desktop/imageGen-v0.1/`
+and the package was renamed `imageGenV0` → `imageGen`. The interim
+`claudeFinished/WIP/` stage was skipped by Joey's call.
 
-### `claudeFinished/WIP/` → `claudeFinished/apps/`
+Remaining before a `v1.0` tag:
 - Phase 8 (integration & polish) done
-- You've personally used it to generate ≥3 real figures for coursework or papers
+- Used to generate ≥3 real figures for coursework or papers
 - No open High-priority `BACKLOG.md` items remain
 - *"Shipped" means you'd give someone else the path without warning them*
-
-**Also do when graduating:** rename `imageGenV0` → `imageGen`, update `CLAUDE.md`'s
-project table, push a `v1.0` tag.
 
 ---
 

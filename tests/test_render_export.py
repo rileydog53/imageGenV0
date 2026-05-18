@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from imageGenV0.render.export import svg_to_pdf, svg_to_png
+from imageGen.render.export import svg_to_pdf, svg_to_png
 
 _MIN_SVG = (
     b'<?xml version="1.0"?>'
