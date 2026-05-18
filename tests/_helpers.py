@@ -7,6 +7,8 @@ Three module-level helpers used across the suite:
   ``LayoutEntry`` instances into an SVG and write a PNG to ``tests/figures/``.
 - ``render_group_to_png(group, filename, canvas)`` — wrap a single svgwrite
   ``Group`` in a white-background drawing and write a PNG to ``tests/figures/``.
+- ``compare_pngs(path_a, path_b, channel_tol)`` — pixel-diff two PNGs; the
+  Phase 6 golden-image regression suite uses it to detect visual drift.
 
 The two render helpers exist because layout-engine tests produce
 ``list[LayoutEntry]`` (with per-entry ``position`` offsets) while primitive
@@ -20,8 +22,10 @@ from pathlib import Path
 from typing import Iterable
 
 import cairosvg
+import numpy as np
 import svgwrite
 import svgwrite.container
+from PIL import Image
 
 from imageGenV0.ir.schema import Figure
 from imageGenV0.layout.types import LayoutEntry
@@ -78,3 +82,39 @@ def render_group_to_png(
     out = FIGURES_DIR / filename
     out.write_bytes(cairosvg.svg2png(bytestring=dwg.tostring().encode("utf-8")))
     return out
+
+
+def compare_pngs(
+    path_a: Path | str,
+    path_b: Path | str,
+    *,
+    channel_tol: int = 8,
+) -> float:
+    """Pixel-diff two PNGs and return the fraction of differing pixels.
+
+    A pixel counts as differing when any RGBA channel's absolute difference
+    exceeds ``channel_tol`` — the slack absorbs minor cairo/font antialiasing
+    variance so the golden suite flags real regressions, not render noise.
+
+    Args:
+        path_a: First PNG path.
+        path_b: Second PNG path.
+        channel_tol: Per-channel absolute-difference threshold (0–255).
+
+    Returns:
+        Fraction of differing pixels, a float in [0.0, 1.0].
+
+    Raises:
+        ValueError: If the two images have different dimensions.
+    """
+    img_a = Image.open(path_a).convert("RGBA")
+    img_b = Image.open(path_b).convert("RGBA")
+    if img_a.size != img_b.size:
+        raise ValueError(
+            f"Image dimensions differ: {path_a} is {img_a.size}, "
+            f"{path_b} is {img_b.size}."
+        )
+    # int16 so per-channel subtraction does not underflow uint8.
+    diff = np.abs(np.array(img_a, dtype=np.int16) - np.array(img_b, dtype=np.int16))
+    pixel_differs = np.any(diff > channel_tol, axis=2)
+    return float(np.sum(pixel_differs) / pixel_differs.size)
