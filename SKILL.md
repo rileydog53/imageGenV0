@@ -1,3 +1,8 @@
+---
+name: imageGen
+description: Generate publication-style schematic scientific figures — pathway diagrams, reaction schemes, experimental workflows, cellular schematics, and mechanism cartoons — from a natural-language request. Use when the user asks to draw, diagram, or sketch a biological pathway or signalling cascade, a chemical reaction scheme, an experimental protocol workflow, a labelled cell schematic, or a reaction mechanism cartoon. Produces vector-first schematic figures (SVG/PNG/PDF) — not photorealistic images and not plots of real data.
+---
+
 # imageGen — Scientific Figure Generation
 
 Generate publication-style schematic figures — pathway diagrams, reaction
@@ -7,6 +12,32 @@ multi-panel graphical abstracts — from a natural-language request.
 Figures are **vector-first and schematic**: clean SVG/PNG/PDF assembled from a
 curated library of biology- and chemistry-aware primitives. This is not an
 image generator and not a data-plotting tool.
+
+---
+
+## Setup — environment & paths
+
+imageGen is an installed Python package; commands in this skill must run
+through its virtualenv and reference absolute paths, since the skill may be
+invoked from any working directory:
+
+- **Python:** use `~/Desktop/.venv/bin/python`, never bare `python`. The
+  `imageGen` package is installed there — both `python -m imageGen` (CLI) and
+  `from imageGen... import` (validation/verification) resolve from it.
+- **Repo root:** `~/Desktop/imageGen-v0.1/`. Where this skill cites
+  `tests/fixtures/<file>` it means
+  `~/Desktop/imageGen-v0.1/tests/fixtures/<file>` — read those as worked IR
+  examples.
+- **Working files:** write the IR JSON, any `smiles_map` JSON, and the
+  rendered figure to the user's current working directory (or a path the user
+  gives); use `~/Desktop/scratch/` for throwaway intermediates.
+
+The render command in step 6, in absolute form:
+
+```
+~/Desktop/.venv/bin/python -m imageGen figure.json -o figure.png \
+    --style nature --dpi 300
+```
 
 ---
 
