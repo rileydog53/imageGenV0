@@ -1,6 +1,6 @@
 # imageGen — Project Roadmap
 
-**Status:** Phase 8 (Integration & Polish) next — Phases 0–7 complete.
+**Status:** v1.0 — all 8 phases complete.
 
 ## Quick Status
 
@@ -14,9 +14,9 @@
 | 5 | Renderer & Compositor | ✅ DONE |
 | 6 | Verification | ✅ DONE |
 | 7 | LLM Frontend (SKILL.md) | ✅ DONE |
-| 8 | Integration & Polish | ⏳ PENDING |
+| 8 | Integration & Polish | ✅ DONE |
 
-**Total tests passing:** 361 green ✅
+**Total tests passing:** 373 green ✅
 
 ---
 
@@ -44,9 +44,10 @@ See `~/Desktop/TODO.txt` COMPLETED section for per-step detail + commit SHAs.
 
 ## What's Next
 
-### Phase 8: Integration & polish
-End-to-end test (a real prompt → figure), human README, documented
-limitations, feedback log.
+v1.0 is shipped — all eight phases are complete, all golden tests pass, and
+one worked example per archetype is committed (`references/examples/`).
+Future work is tracked in `BACKLOG.md`; known v1 limitations are documented
+in `LIMITATIONS.md`; wrong-figure reports go in `FEEDBACK.md`.
 
 ---
 
