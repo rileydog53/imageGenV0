@@ -15,29 +15,47 @@ image generator and not a data-plotting tool.
 
 ---
 
-## Setup — environment & paths
+## Environment — Claude Code (native Bash + file tools)
 
-imageGen is an installed Python package; commands in this skill must run
-through its virtualenv and reference absolute paths, since the skill may be
-invoked from any working directory:
+**This skill runs in Claude Code**, which has native execution tools — there
+is no osascript, no "Control your Mac" MCP, and no `copy_file_user_to_claude`
+hop. Use:
 
-- **Python:** use `~/Desktop/.venv/bin/python`, never bare `python`. The
-  `imageGen` package is installed there — both `python -m imageGen` (CLI) and
-  `from imageGen... import` (validation/verification) resolve from it.
-- **Repo root:** `~/Desktop/imageGen-v0.1/`. Where this skill cites
-  `tests/fixtures/<file>` it means
-  `~/Desktop/imageGen-v0.1/tests/fixtures/<file>` — read those as worked IR
-  examples.
-- **Working files:** write the IR JSON, any `smiles_map` JSON, and the
-  rendered figure to the user's current working directory (or a path the user
-  gives); use `~/Desktop/scratch/` for throwaway intermediates.
+- **`Bash`** for every command (validate / render / verify). It runs directly
+  on the user's Mac.
+- **`Read`** to read fixtures and to display the rendered PNG inline in chat.
+- **`Write`/`Edit`** to create the spec or IR file.
 
-The render command in step 6, in absolute form:
+Paths: use the venv Python `~/Desktop/.venv/bin/python` (the `imageGen`
+package is installed there). The repo root is `~/Desktop/imageGen-v0.1/`;
+fixtures cited as `tests/fixtures/<file>` live at
+`~/Desktop/imageGen-v0.1/tests/fixtures/<file>`. Write throwaway specs and
+output to `~/Desktop/scratch/`. `~` works fine in the Bash tool.
+
+> **If you are a chat assistant *without* a shell** (e.g. claude.ai with no
+> Claude Code session): do **not** try to execute anything. Your job is to
+> **author the YAML spec** (Steps 1–3) and hand the user the single command
+> in Step 4 to run in Claude Code. You are excellent at composing the spec;
+> let Claude Code do the rendering.
+
+---
+
+## Quickest path (one command)
+
+The whole pipeline collapses to four actions — three of them are tool calls
+you already have, and the render+verify is a **single** Bash command:
 
 ```
-~/Desktop/.venv/bin/python -m imageGen figure.json -o figure.png \
-    --style nature --dpi 300
+1. Classify the request + Read the matching fixture (Step 1).
+2. Write a small YAML spec (Step 3).
+3. Bash:  ~/Desktop/.venv/bin/python -m imageGen render-spec SPEC.yaml \
+              -o OUT.png --verify
+4. Read OUT.png to show it inline (Step 5).
 ```
+
+`render-spec` builds the IR through the schema (so validation happens for
+free) and `--verify` runs all three verifiers and prints a one-line report —
+no separate validate or verify round-trip.
 
 ---
 
@@ -73,46 +91,131 @@ user wants:
 
 Follow these steps in order. Do not skip the IR or the verification step.
 
-1. **Classify** the request into exactly one archetype (see *Archetypes*). If
-   none fit, refuse.
-2. **Extract** the figure into entities, compartments, and relations (or, for
-   a multi-panel figure, panels). See *IR reference*.
-3. **Write** the IR to a JSON file (e.g. `figure.json`).
-4. **Validate** it before rendering:
-   ```python
-   from imageGen.ir.schema import Figure
-   ir = Figure.model_validate_json(open("figure.json").read_text())
-   ```
-   A `pydantic.ValidationError` means the IR is malformed — read the message,
-   fix the JSON, revalidate. Common causes: a relation referencing an unknown
-   entity id, an entity `location` naming a missing compartment, or a figure
-   that mixes top-level `entities` with `panels` (forbidden — see *IR reference*).
-5. **For `reaction_scheme` figures only:** build a `smiles_map`,
-   `{entity_id: "SMILES"}`, covering every entity. You supply the SMILES from
-   chemical knowledge (e.g. ethanol → `"CCO"`). It is a render argument, not
-   an IR field. Write it to its own JSON file for the CLI.
-6. **Render** via the CLI:
-   ```
-   python -m imageGen figure.json -o figure.png [--style nature]
-                         [--smiles-map smiles.json] [--dpi 300]
-   ```
-   A PNG/PDF render also writes a sibling `figure.svg` next to it — the
-   verification step needs that SVG.
-7. **Verify** the rendered SVG and surface any failure (fail loud — do not
-   swallow the exception):
-   ```python
-   from imageGen.verify.semantic_check import semantic_check
-   from imageGen.verify.legibility_check import legibility_check
-   from imageGen.verify.convention_check import convention_check
-   semantic_check(ir, "figure.svg")     # every IR element present?
-   legibility_check("figure.svg")       # no overlapping / undersized labels?
-   convention_check(ir, "figure.svg")   # inhibition T-bars, correct shapes?
-   ```
-   If a check raises, the figure has a real problem — fix the IR or the
-   request and re-render rather than presenting a broken figure.
-8. **Present** the figure to the user with a one- or two-sentence caption
-   describing what it depicts. If any element is illustrative or schematic
-   rather than measured data, say so explicitly in the chat text.
+### Step 1 — Classify and read fixture (locked gate)
+
+Classify the request into exactly one archetype (see *Archetypes*). If none
+fit, refuse.
+
+**Immediately after classifying, read the corresponding fixture file before
+doing anything else.** Do not write any IR until you have read the fixture and
+confirmed its structure matches your plan.
+
+Archetype → required fixture file:
+
+| Archetype | Fixture file |
+|---|---|
+| `pathway` | `gpcr_signaling.json` |
+| `reaction_scheme` | `oxidation_reaction.json` |
+| `workflow` | `western_blot_schematic.json` |
+| `cellular_schematic` | `cellular_schematic.json` |
+| `mechanism_cartoon` | `mechanism_cartoon.json` |
+| multi-panel figure | `three_panel_workflow.json` **AND** `graphical_abstract_mrna_vaccine.json` |
+
+Read it with the **`Read`** tool:
+`~/Desktop/imageGen-v0.1/tests/fixtures/<file>`.
+
+### Step 2 — Plan and output confirmation block
+
+Before writing any JSON, output the following confirmation block as visible
+text in your response:
+
+```
+Archetype: <selected archetype> — because <one-sentence reason>
+Fixture(s) read: <filename(s)>, confirmed structure matches plan
+Entity count per panel: <N> (must be ≤5; if >5, list collapsed nodes)
+Label safety: all entity and relation labels are ASCII-only — confirmed
+```
+
+Do not proceed to Step 3 until this block is written. If any panel has more
+than 5 entities, collapse intermediate nodes first (e.g. merge "Gs protein" +
+"Adenylyl Cyclase" into a single "Gs/AC" node) and update the count.
+
+### Step 3 — smiles_map (reaction_scheme only)
+
+For `reaction_scheme` figures only: build a `smiles_map`,
+`{entity_id: "SMILES"}`, covering every entity. You supply the SMILES from
+chemical knowledge (e.g. ethanol → `"CCO"`). It is a render argument, not an
+IR field. **Write** it to its own JSON file (e.g.
+`~/Desktop/scratch/smiles.json`).
+
+### Step 4 — Write the spec
+
+**Write** a small YAML spec to `~/Desktop/scratch/figure.yaml`. The spec is a
+flat description piped through the builder, so entities and relations are
+positional lists — far less to type than raw IR JSON:
+
+```yaml
+archetype: pathway
+style: nature              # cell_press (default) | nature | acs
+title: MAPK cascade        # optional
+entities:
+  - [ras, protein, Ras]            # [id, type, label]  (+ optional 4th: compartment id)
+  - [raf, kinase, Raf]
+  - [mek, kinase, MEK]
+relations:
+  - [ras, activates, raf]          # [source, type, target]  (+ optional 4th: label)
+  - [raf, phosphorylates, mek]
+compartments:                      # optional
+  - [cyto, cytoplasm, Cytoplasm]   # [id, type, label]
+```
+
+See *IR reference* for every type and field. Labels must be **ASCII-only**
+(see *Step 2*). If you'd rather hand-write full IR JSON, that works too —
+`render-spec` accepts a `.json` spec with the same shape.
+
+### Step 5 — Render + verify (one command)
+
+Run **one** `Bash` command. `render-spec` builds and validates the IR through
+the schema, renders the PNG (and a sibling `.svg`), and `--verify` runs all
+three verifiers and prints a one-line report:
+
+```bash
+~/Desktop/.venv/bin/python -m imageGen render-spec ~/Desktop/scratch/figure.yaml \
+    -o ~/Desktop/scratch/figure.png --verify \
+    [--smiles-map ~/Desktop/scratch/smiles.json]   # reaction_scheme only
+```
+
+- A **`pydantic.ValidationError`** means the spec is malformed — read the
+  message, fix only what it names (common: a relation referencing an unknown
+  entity id, an `entity` 4th-element naming a missing compartment, mixing
+  `entities` with `panels`), and re-run.
+- The printed **`VERIFY:`** line reports `semantic` / `legibility` /
+  `convention`. A `semantic=FAIL` or `convention=FAIL` is a real defect — fix
+  the spec and re-render. `legibility` reports `needs_crop` (informational)
+  and only FAILs on genuinely illegible overlap.
+- Dense figures no longer crash: unplaceable labels shrink/nudge or land with
+  a tolerated overlap (a `UserWarning` is printed). Add `--strict-labels` to
+  fail loud instead, or `--no-labels` to suppress labels entirely.
+
+### Step 6 — Present
+
+**Read** `~/Desktop/scratch/figure.png` with the `Read` tool to display it
+inline, then add a one- or two-sentence caption describing what it depicts.
+Do **not** use `open`, `osascript`, Preview, or any external viewer. If any
+element is illustrative/schematic rather than measured data, say so.
+
+### Step 7 — Offer to crop (only if there's excess whitespace)
+
+The default canvas can leave a wide margin of empty space around a small
+figure. If the Step 5 `VERIFY:` line reported **`needs_crop=True`** (or the
+displayed image obviously floats in whitespace), present the full figure
+first, then **ask the user**: *"Want me to crop in tighter on the figure?"*
+Do not crop unprompted.
+
+If they say yes, re-run Step 5's command with `--crop` added. It writes a
+sibling `~/Desktop/scratch/figure_cropped.png` (the original is kept) reframed
+onto the content with a comfortable margin. **Read** that sibling to show it.
+
+```bash
+~/Desktop/.venv/bin/python -m imageGen render-spec ~/Desktop/scratch/figure.yaml \
+    -o ~/Desktop/scratch/figure.png --crop
+# add --crop-keep-aspect to keep a uniform 4:3 shape (crops less)
+```
+
+`--crop` fits the content's own shape (a wide pathway becomes a wide, short
+image) — that's what actually removes whitespace. `--crop-keep-aspect` keeps
+the canvas proportions but, because layouts fill a full dimension, usually
+crops little.
 
 ---
 
@@ -162,7 +265,7 @@ never both.
 |---|---|---|---|
 | `id` | string | yes | unique within the figure |
 | `type` | entity type | yes | see below |
-| `label` | string | yes | shown on the figure |
+| `label` | string | yes | shown on the figure — ASCII only |
 | `location` | string | no | a compartment `id` (must exist) |
 | `style` | object | no | per-entity style overrides |
 
@@ -181,7 +284,7 @@ never both.
 | `source` | string | yes | an entity `id` (must exist) |
 | `target` | string | yes | an entity `id` (must exist) |
 | `type` | relation type | yes | see below |
-| `label` | string | no | |
+| `label` | string | no | ASCII only; omit if panel already has 3 labels |
 | `conditions` | `ReactionConditions` or object | no | reaction context |
 
 `type` ∈ `activates`, `inhibits`, `binds`, `translocates`, `phosphorylates`,
@@ -201,9 +304,10 @@ must not overlap).
 
 ### `Annotation`
 
-`type` ∈ `label`, `caption`, `scale_bar`; `text` (string); `position` —
-either `[x, y]` coordinates or a named slot ∈ `top`, `bottom`, `left`,
-`right`, `top-left`, `top-right`, `bottom-left`, `bottom-right`, `center`.
+`type` ∈ `label`, `caption`, `scale_bar`; `text` (string — ASCII only);
+`position` — either `[x, y]` coordinates or a named slot ∈ `top`, `bottom`,
+`left`, `right`, `top-left`, `top-right`, `bottom-left`, `bottom-right`,
+`center`.
 
 ### Validators (will reject the IR if violated)
 
@@ -240,35 +344,77 @@ When a request falls outside scope, decline plainly and redirect:
 
 ---
 
+## Error recovery
+
+### Crowded labels
+
+By default labels never crash the render — an unplaceable label shrinks,
+nudges, or lands with a tolerated overlap (you'll see a `UserWarning`). If the
+result looks cluttered, improve it rather than accepting it:
+
+1. Count entities per panel. If any panel has >5 entities, collapse nodes
+   (e.g. merge "Gs protein" + "Adenylyl Cyclase" into "Gs/AC") until ≤5.
+2. Count labelled relations per panel. Remove labels until ≤3 remain; move
+   removed labels into the caption.
+3. Still cluttered? Render `--no-labels` and describe the relations in the
+   caption.
+
+(`--strict-labels` turns an unplaceable label back into a hard
+`LabelPlacementError` if you want the render to fail rather than overlap.)
+
+### ValidationError
+
+Read the full pydantic error message before changing anything. Check:
+
+- Are all `relation.source`/`target` values valid entity `id`s?
+- Are all `entity.location` values valid compartment `id`s?
+- Is the figure mixing top-level `entities`/`relations` with `panels`
+  (forbidden by the Leaf-XOR-panel rule)?
+
+Fix only what the error message identifies, then revalidate before rendering.
+
+### Bash command failure
+
+Do not retry the same command unchanged. Check:
+
+- Python is the venv: `~/Desktop/.venv/bin/python` (bare `python` won't have
+  `imageGen` installed).
+- The spec file was actually written to disk before the render command runs.
+- For `reaction_scheme`, `--smiles-map` is present and covers every entity.
+
+---
+
 ## Pointers
 
 - **Primitives** (`imageGen/primitives/`): proteins, membranes, nucleic
   acids, cells, chemistry (RDKit), lab equipment, arrows — assembled
   automatically by the layout engines; you author the IR, not primitives.
-- **CLI** (`python -m imageGen`): `IR_PATH -o OUT` plus optional
+- **CLI** (`python -m imageGen`): two modes —
+  `render-spec SPEC.{yaml,json} -o OUT` (preferred; builds + validates from a
+  flat spec) and the raw `IR_PATH -o OUT`. Shared flags:
   `--style {cell_press,nature,acs}`, `--format {svg,png,pdf}` (else inferred
-  from the output suffix), `--dpi N` (default 300), `--smiles-map FILE.json`,
-  `--no-labels`.
+  from suffix), `--dpi N` (default 300), `--smiles-map FILE.json`,
+  `--no-labels`, `--strict-labels`, `--canvas WxH`, `--verify`,
+  `--crop` (+ `--crop-keep-aspect`, `--crop-margin FRAC`).
+- **Builder API** (`imageGen.ir.builder.build`): the same tuple-friendly
+  shorthand the spec uses, for calling from Python.
 - **Example IRs**: every archetype has a worked example in
-  `tests/fixtures/` — read these to pattern-match the JSON shape.
-
-### Known limitation
-
-Label placement is greedy. On dense figures it can raise
-`LabelPlacementError`. If that happens: simplify the figure (fewer entities,
-shorter labels), or render with `--no-labels` and describe the relations in
-the caption instead.
+  `tests/fixtures/` — **Read** these to pattern-match the shape.
 
 ---
 
 ## Cookbook
 
+**Before writing any IR, read the fixture file for your archetype (Step 1).**
+The fixture is the ground truth for IR structure — do not write JSON from
+memory.
+
 Worked examples — each `tests/fixtures/<file>` is a complete, validated IR.
+**Read** them at `~/Desktop/imageGen-v0.1/tests/fixtures/<file>`.
 
 1. **"Show the MAPK kinase cascade."** → `pathway`. Entities Ras (protein),
    Raf/MEK/ERK (kinases); relations `activates` then `phosphorylates`.
-   See `tests/fixtures/mapk_cascade.json`. Render:
-   `python -m imageGen tests/fixtures/mapk_cascade.json -o mapk.png`.
+   See `tests/fixtures/mapk_cascade.json`.
 
 2. **"Diagram a GPCR signalling event across the membrane."** → `pathway`
    with compartments (`extracellular`, `membrane`, `cytoplasm`); entities
@@ -282,9 +428,7 @@ Worked examples — each `tests/fixtures/<file>` is a complete, validated IR.
    Two `metabolite` entities, one relation with `conditions`
    (`reagents`, `notes`). Build `smiles_map`
    `{"alcohol": "CCO", "aldehyde": "CC=O"}`. See
-   `tests/fixtures/oxidation_reaction.json`. Render:
-   `python -m imageGen tests/fixtures/oxidation_reaction.json -o rxn.png
-   --smiles-map smiles.json`.
+   `tests/fixtures/oxidation_reaction.json`.
 
 5. **"Cartoon the SN2 substitution mechanism."** → `mechanism_cartoon` with
    `binds`/`generic` relations and `acs` style. See

@@ -78,3 +78,118 @@ def test_main_rejects_unknown_format(tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         main([MAPK, "-o", str(tmp_path / "fig.png"), "--format", "foo"])
     assert excinfo.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# v2 — render-spec, --verify, --canvas, --strict-labels
+# ---------------------------------------------------------------------------
+
+_SPEC_YAML = """\
+archetype: pathway
+style: nature
+entities:
+  - [ras, protein, Ras]
+  - [raf, kinase, Raf]
+  - [mek, kinase, MEK]
+relations:
+  - [ras, activates, raf]
+  - [raf, phosphorylates, mek]
+"""
+
+
+def test_render_spec_yaml(tmp_path):
+    spec = tmp_path / "fig.yaml"
+    spec.write_text(_SPEC_YAML)
+    out = tmp_path / "fig.png"
+    rc = main(["render-spec", str(spec), "-o", str(out)])
+    assert rc == 0
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_spec_json(tmp_path):
+    spec = tmp_path / "fig.json"
+    spec.write_text(json.dumps({
+        "archetype": "pathway",
+        "entities": [["a", "protein", "A"], ["b", "protein", "B"]],
+        "relations": [["a", "activates", "b"]],
+    }))
+    out = tmp_path / "fig.svg"
+    rc = main(["render-spec", str(spec), "-o", str(out)])
+    assert rc == 0
+    assert out.exists()
+
+
+def test_render_spec_missing_archetype_raises(tmp_path):
+    spec = tmp_path / "bad.yaml"
+    spec.write_text("entities:\n  - [a, protein, A]\n")
+    with pytest.raises(ValueError, match="archetype"):
+        main(["render-spec", str(spec), "-o", str(tmp_path / "x.png")])
+
+
+def test_verify_flag_prints_report(tmp_path, capsys):
+    out = tmp_path / "fig.png"
+    rc = main([MAPK, "-o", str(out), "--verify"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "VERIFY:" in captured.out
+    assert "semantic=OK" in captured.out
+
+
+def test_canvas_flag_pins_size(tmp_path):
+    out = tmp_path / "fig.svg"
+    rc = main([MAPK, "-o", str(out), "--canvas", "1500x900"])
+    assert rc == 0
+    svg = out.read_text()
+    assert 'width="1500.0"' in svg and 'height="900.0"' in svg
+
+
+def test_canvas_flag_rejects_bad_value(tmp_path):
+    with pytest.raises(SystemExit):
+        main([MAPK, "-o", str(tmp_path / "fig.svg"), "--canvas", "wide"])
+
+
+def test_strict_labels_flag_raises_on_dense(tmp_path):
+    from imageGen.layout.label_placement import LabelPlacementError
+    dense = str(FIXTURES_DIR / "western_blot_schematic.json")
+    with pytest.raises(LabelPlacementError):
+        main([dense, "-o", str(tmp_path / "fig.png"), "--strict-labels"])
+
+
+def test_render_spec_accepts_style_preset_alias(tmp_path):
+    """A full-IR-style spec using `style_preset` (not `style`) renders."""
+    spec = tmp_path / "fig.json"
+    spec.write_text(json.dumps({
+        "archetype": "pathway",
+        "style_preset": "nature",
+        "entities": [["a", "protein", "A"], ["b", "protein", "B"]],
+        "relations": [["a", "activates", "b"]],
+    }))
+    out = tmp_path / "fig.svg"
+    assert main(["render-spec", str(spec), "-o", str(out)]) == 0
+    assert out.exists()
+
+
+def test_render_spec_multipanel_json(tmp_path):
+    """A multi-panel spec (panels with nested IR dicts) renders via render-spec."""
+    spec = tmp_path / "abstract.json"
+    spec.write_text(json.dumps({
+        "archetype": "workflow",
+        "style_preset": "cell_press",
+        "panels": [
+            {"id": "p1", "title": "A", "grid": [0, 0, 1, 1], "content": {
+                "archetype": "pathway",
+                "entities": [{"id": "x", "type": "protein", "label": "X"},
+                             {"id": "y", "type": "kinase", "label": "Y"}],
+                "relations": [{"source": "x", "target": "y", "type": "activates"}],
+            }},
+            {"id": "p2", "title": "B", "grid": [0, 1, 1, 1], "content": {
+                "archetype": "pathway",
+                "entities": [{"id": "m", "type": "protein", "label": "M"},
+                             {"id": "n", "type": "protein", "label": "N"}],
+                "relations": [{"source": "m", "target": "n", "type": "binds"}],
+            }},
+        ],
+    }))
+    out = tmp_path / "abstract.png"
+    assert main(["render-spec", str(spec), "-o", str(out)]) == 0
+    assert out.exists() and out.stat().st_size > 0

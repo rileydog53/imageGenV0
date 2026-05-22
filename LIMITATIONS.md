@@ -5,26 +5,38 @@ but it is deliberately scoped. The limitations below are known and accepted
 for v1 — they are tracked for v2 in [BACKLOG.md](BACKLOG.md). If a figure
 comes out wrong because of one of these, log it in [FEEDBACK.md](FEEDBACK.md).
 
-## Label placement overflows on dense figures
+## Label placement degrades gracefully on dense figures (v2)
 
-Automatic label placement is **greedy**: for each label it picks the first
-candidate position that does not collide with an entity primitive. On dense
-figures it can run out of candidates and raise `LabelPlacementError` rather
-than overlap labels.
+Automatic label placement is greedy, but no longer fails loud by default. A
+label that can't find a clear slot runs a **relax-and-retry ladder**: shrink
+the font one step → nudge the anchor a few px → as a last resort, place it
+anyway with `data-overlap="true"` (which `legibility_check` tolerates) and
+emit a `UserWarning`. Dense fixtures (`graphical_abstract_mrna_vaccine`,
+`mechanism_cartoon`, `western_blot_schematic`) now render with labels on.
 
-Three checked-in fixtures hit this — `graphical_abstract_mrna_vaccine`,
-`mechanism_cartoon`, `western_blot_schematic`. They render cleanly with
-`labels=False` (CLI: `--no-labels`). A force-directed retry / leader-line
-fallback is the planned v2 fix (BACKLOG L2, L14).
+Pass `strict_labels=True` (CLI: `--strict-labels`) to restore the v1
+fail-loud `LabelPlacementError` contract. Force-directed placement and
+leader lines remain a v2+ stretch (BACKLOG L2, L14).
 
-*Workaround:* render with labels suppressed, or reduce entity count.
+*Workaround for a cluttered result:* render `--no-labels`, reduce entity
+count, or split across panels.
 
-## ~20-entity practical ceiling per figure
+## Large figures: dynamic canvas + band wrapping (v2)
 
-Layout engines place entities on a single band/row per compartment with no
-wrapping. Beyond roughly 20 entities a figure becomes cramped and label
-placement is far more likely to overflow. There is no hard cap — the figure
-just degrades. Split large pathways across panels.
+The old ~20-entity ceiling is lifted. A band that holds more than
+`pathway_max_per_row` entities (default 6) now **wraps to multiple rows**
+instead of cramming into one line, and the canvas auto-sizes to fit the
+content (clamped to an 800×600 floor so small figures are unchanged). Pin a
+size with `--canvas WxH` if needed. Very large figures (dozens of entities,
+many compartments) still read better split across panels, but they no longer
+degrade into an unreadable single row.
+
+Small figures still render on the 800×600 floor and so can sit in whitespace
+(the floor preserves golden-image stability). To remove that margin, render
+with `--crop`: it writes a `*_cropped` sibling reframed onto the content (a
+wide pathway becomes a wide, short image). `--crop-keep-aspect` keeps the
+canvas proportions but, because layouts fill a full dimension, usually crops
+little.
 
 ## Straight pathway arrows only
 

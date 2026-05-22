@@ -6,13 +6,17 @@ public ``render_figure`` entry point and then audited by all three Phase 6
 verifiers against the rendered SVG. A pass means classify-free IR → layout →
 render → verify holds together for every wired archetype.
 
-Two label-overflow behaviors are pinned here as *documented* behavior rather
-than hidden: the three dense fixtures that exhaust the greedy label engine
-(BACKLOG L2/L14) are asserted to raise ``LabelPlacementError`` with labels on,
-and to render cleanly through the full pipeline with labels off.
+Label-overflow behavior is pinned here as *documented* behavior rather than
+hidden: the three dense fixtures that exhaust the greedy label engine now
+render through the full pipeline with labels on — the v2 relax-and-retry
+ladder lands the last-resort labels with ``data-overlap="true"`` and
+``legibility_check`` tolerates those deliberate collisions. The same fixtures
+still raise ``LabelPlacementError`` when the caller opts into
+``strict_labels=True``, and render cleanly with labels off.
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -104,13 +108,40 @@ def test_every_wired_archetype_is_covered() -> None:
 
 
 @pytest.mark.parametrize("fixture_name", LABEL_OVERFLOW_FIXTURES)
-def test_dense_fixture_overflows_label_engine(
+def test_dense_fixture_renders_with_labels_on(
     fixture_name: str, tmp_path: Path
 ) -> None:
-    """Dense fixtures raise LabelPlacementError with labels on (BACKLOG L2/L14)."""
+    """Dense fixtures now complete the full pipeline with labels on.
+
+    Previously all three raised ``LabelPlacementError``; the v2 relax-and-retry
+    ladder places every label (shrinking, nudging, or — last resort — landing
+    with ``data-overlap="true"`` which ``legibility_check`` tolerates). Some
+    fixtures emit a UserWarning about a last-resort overlap; that's expected
+    and not a failure.
+    """
+    _run_pipeline(fixture_name, tmp_path, labels=True)
+
+
+@pytest.mark.parametrize("fixture_name", LABEL_OVERFLOW_FIXTURES)
+def test_strict_labels_matches_lenient_overlap(
+    fixture_name: str, tmp_path: Path
+) -> None:
+    """Contract: a fixture lands a last-resort overlap (lenient) iff it raises
+    in strict mode. Fixtures the ladder fully resolves succeed in both modes.
+    """
     ir = load_fixture(fixture_name)
-    with pytest.raises(LabelPlacementError):
-        render_figure(ir, tmp_path / f"{Path(fixture_name).stem}.png", labels=True)
+    out = tmp_path / f"{Path(fixture_name).stem}.png"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        render_figure(ir, out, labels=True)
+    overlapped = any("overlap" in str(w.message) for w in caught)
+
+    if overlapped:
+        with pytest.raises(LabelPlacementError):
+            render_figure(ir, out, labels=True, strict_labels=True)
+    else:
+        # Ladder fully resolved every label — strict mode succeeds too.
+        render_figure(ir, out, labels=True, strict_labels=True)
 
 
 @pytest.mark.parametrize("fixture_name", LABEL_OVERFLOW_FIXTURES)

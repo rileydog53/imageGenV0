@@ -115,23 +115,44 @@ def test_place_labels_falls_through_priorities():
     assert not (cx > 110 and cy == pytest.approx(100))
 
 
-def test_place_labels_raises_when_all_overlap():
-    """Surround the anchor on all sides — every priority candidate
-    overlaps an entity bbox."""
+def _boxed_in_request():
+    """An anchor surrounded on all sides so every priority candidate (and the
+    small fallback nudges) overlaps an entity bbox."""
     anchor = (300, 300)
     surrounders = [
-        _entity_entry("R", (340, 300)),  # right
-        _entity_entry("L", (260, 300)),  # left
-        _entity_entry("U", (300, 270)),  # above
-        _entity_entry("D", (300, 330)),  # below
-        _entity_entry("C", (300, 300)),  # center
+        _entity_entry("R", (332, 300)),   # right
+        _entity_entry("L", (268, 300)),   # left
+        _entity_entry("U", (300, 278)),   # above
+        _entity_entry("D", (300, 322)),   # below
+        _entity_entry("C", (300, 300)),   # center
+        _entity_entry("R2", (348, 300)),  # second ring to defeat +8px nudges
+        _entity_entry("L2", (252, 300)),
+        _entity_entry("U2", (300, 262)),
+        _entity_entry("D2", (300, 338)),
     ]
     req = LabelRequest(text="boxed", anchor=anchor, anchor_size=(2, 2))
+    return surrounders, req
+
+
+def test_place_labels_strict_raises_when_all_overlap():
+    """With strict_labels=True, a fully boxed-in anchor raises after the
+    ladder (shrink + nudge) is exhausted."""
+    surrounders, req = _boxed_in_request()
     with pytest.raises(LabelPlacementError) as exc:
-        place_labels(surrounders, [req])
+        place_labels(surrounders, [req], strict_labels=True)
     assert exc.value.failures == [req]
     # Entries on the exception are the partial list (no successful placements).
     assert all(e.primitive is not _label_primitive for e in exc.value.entries)
+
+
+def test_place_labels_lenient_overlaps_when_all_overlap():
+    """By default (lenient), the same boxed-in anchor lands the label with an
+    overlap flag and warns rather than raising."""
+    surrounders, req = _boxed_in_request()
+    with pytest.warns(UserWarning, match="overlap"):
+        out = place_labels(surrounders, [req])
+    label = _label_entries(out)[0]
+    assert label.kwargs.get("overlap") is True
 
 
 def test_style_override_does_not_crash():

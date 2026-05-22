@@ -53,6 +53,7 @@ Phase 4 / 5 coupling:
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,6 +62,15 @@ import svgwrite.container
 from imageGen.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
 from imageGen.layout.types import LayoutEntry
 from imageGen.primitives import proteins
+
+
+# Relax-and-retry knobs for the v2 placement fallback ladder. A label that
+# can't be placed at full size first shrinks one step, then tries small
+# anchor nudges, and only then (in lenient mode) lands with an overlap flag.
+_FONT_SHRINK_FACTOR = 0.85          # one 15%-smaller retry step (stays ≥ 6pt floor)
+_ANCHOR_NUDGES: tuple[tuple[float, float], ...] = (
+    (8.0, 0.0), (-8.0, 0.0), (0.0, 8.0), (0.0, -8.0),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +226,7 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     if entry.primitive not in _ENTITY_PRIMITIVES:
         return None
     # entity-primitive args: (label, (cx, cy), ...) per pathway_layout
-    _, center = entry.args[:2]
+    label, center = entry.args[:2]
     cx, cy = center
     # Reverse-lookup the bbox via the per-EntityType table. Multiple
     # EntityTypes can share a primitive — pick the largest bbox among
@@ -230,6 +240,15 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
         return None
     w = max(c[0] for c in candidates)
     h = max(c[1] for c in candidates)
+    # An entity's centered label can be wider than its shape (e.g.
+    # "CD8⁺ T cell" in a 60px box). Include the rendered label extent so a
+    # neighbouring relation label doesn't clip the entity's own text — the
+    # collision footprint is the union of shape and label.
+    label_w, label_h = _estimate_text_bbox(
+        str(label), float(_DEFAULT_LABEL_STYLE["label_font_size"])
+    )
+    w = max(w, label_w)
+    h = max(h, label_h)
     return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
 
 
@@ -244,18 +263,93 @@ def _label_primitive(
     text: str,
     center: tuple[float, float],
     style_dict: dict | None = None,
+    overlap: bool = False,
 ) -> svgwrite.container.Group:
     """Render a single label as a centered Text wrapped in a Group.
 
     Delegates the Text construction to `proteins._centered_label`, the
     established label-text contract for this codebase, so Phase 4
     master-preset `label_*` keys flow through one helper.
+
+    When `overlap=True`, the rendered `<text>` carries `data-overlap="true"`
+    so `legibility_check` knows the collision was a deliberate last-resort
+    placement (the fallback ladder exhausted all clear slots) and reports it
+    as a warning rather than raising.
     """
     style = {**_DEFAULT_LABEL_STYLE, **(style_dict or {})}
     cx, cy = center
     g = svgwrite.container.Group()
-    g.add(proteins._centered_label(text, cx, cy, style))
+    label_el = proteins._centered_label(text, cx, cy, style)
+    if overlap:
+        # debug=False lets svgwrite emit the non-allowlisted data-* attr,
+        # mirroring how the compositor tags groups with data-ir-id.
+        label_el._parameter.debug = False
+        label_el.attribs["data-overlap"] = "true"
+    g.add(label_el)
     return g
+
+
+def _first_fit(
+    request: LabelRequest,
+    label_size: tuple[float, float],
+    anchor: tuple[float, float],
+    occupied: list[Bbox],
+    gap: float,
+    margin: float,
+) -> tuple[tuple[float, float], Bbox] | None:
+    """Return (center, bbox) of the first priority slot that clears `occupied`.
+
+    None when every candidate in `request.priority` overlaps something.
+    """
+    for name in request.priority:
+        center = _candidate_center(name, anchor, request.anchor_size, label_size, gap)
+        candidate_bbox = _bbox_from_center(center, label_size)
+        if not any(_overlaps(candidate_bbox, b, margin) for b in occupied):
+            return center, candidate_bbox
+    return None
+
+
+def _place_with_fallback(
+    request: LabelRequest,
+    occupied: list[Bbox],
+    gap: float,
+    margin: float,
+    font_size: float,
+) -> tuple[tuple[float, float], Bbox, float, bool]:
+    """Run the relax-and-retry ladder for a single request.
+
+    Returns `(center, bbox, font_used, overlap)`:
+      1. full font, first-fit;
+      2. shrunk font (`_FONT_SHRINK_FACTOR`), first-fit;
+      3. shrunk font at each `_ANCHOR_NUDGES` offset, first-fit;
+      4. give up — first-choice slot at full font, `overlap=True`.
+
+    Steps 1-3 return `overlap=False`. Step 4 is the only path that returns
+    `overlap=True`; the caller decides whether to emit it (lenient) or treat
+    it as a failure (strict).
+    """
+    full = _estimate_text_bbox(request.text, font_size)
+    hit = _first_fit(request, full, request.anchor, occupied, gap, margin)
+    if hit is not None:
+        return (*hit, font_size, False)
+
+    small_font = font_size * _FONT_SHRINK_FACTOR
+    small = _estimate_text_bbox(request.text, small_font)
+    hit = _first_fit(request, small, request.anchor, occupied, gap, margin)
+    if hit is not None:
+        return (*hit, small_font, False)
+
+    ax, ay = request.anchor
+    for dx, dy in _ANCHOR_NUDGES:
+        hit = _first_fit(request, small, (ax + dx, ay + dy), occupied, gap, margin)
+        if hit is not None:
+            return (*hit, small_font, False)
+
+    # Last resort: land at the first-choice slot even though it collides.
+    center = _candidate_center(
+        request.priority[0], request.anchor, request.anchor_size, full, gap
+    )
+    return center, _bbox_from_center(center, full), font_size, True
 
 
 # ---------------------------------------------------------------------------
@@ -267,33 +361,42 @@ def place_labels(
     label_requests: list[LabelRequest],
     layout_params: dict | None = None,
     style_dict: dict | None = None,
+    *,
+    strict_labels: bool = False,
 ) -> list[LayoutEntry]:
-    """Greedily place each LabelRequest near its anchor without overlap.
+    """Place each LabelRequest near its anchor, relaxing on collision.
+
+    For each request the engine runs a fallback ladder (`_place_with_fallback`):
+    full-size first-fit → 15%-smaller font → small anchor nudges → last-resort
+    overlapping placement. Earlier requests reserve space before later ones.
 
     Args:
         entries: Positioned LayoutEntry items from a layout engine.
             Returned unchanged at the head of the result.
-        label_requests: Labels to place. Processed in submission order;
-            earlier requests reserve space first.
+        label_requests: Labels to place, in submission order.
         layout_params: Optional overlay onto `DEFAULT_LAYOUT_PARAMS`.
             Notable keys: `label_anchor_gap`, `label_collision_margin`.
         style_dict: Optional preset overlay forwarded to every emitted
-            label primitive. The font size from this dict (if any) is
-            also used for the bbox estimator so the collision check
-            matches what will render.
+            label primitive. Its `label_font_size` (if any) seeds the bbox
+            estimator so the collision check matches what renders. When the
+            ladder shrinks a label, that label's entry carries a per-label
+            `style_dict` with the reduced size so the render stays in sync.
+        strict_labels: When True, restore the v1 fail-loud contract — any
+            request that reaches the last-resort (overlapping) rung is
+            collected and raised as `LabelPlacementError` instead of being
+            emitted. The earlier ladder rungs (shrink, nudge) still run, so
+            strict mode places more than v1 did before giving up. Default
+            False: overlapping labels are emitted with `data-overlap="true"`
+            and a `UserWarning` is issued.
 
     Returns:
-        `entries` followed by one new LayoutEntry per successfully placed
-        label. Each label entry has `position=(0.0, 0.0)`; coordinates
-        are baked into args for renderer uniformity.
+        `entries` followed by one new LayoutEntry per placed label. Each
+        label entry has `position=(0.0, 0.0)`; coordinates are baked into args.
 
     Raises:
-        LabelPlacementError: One or more requests had no non-overlapping
-            candidate position. The exception carries the failed
-            requests and the partial entry list.
-
-    The placement order matches the order of `label_requests`: earlier
-    labels claim space before later ones evaluate it.
+        LabelPlacementError: Only when `strict_labels=True` and at least one
+            request exhausted the ladder. Carries the failed requests and the
+            partial entry list.
     """
     params = {**DEFAULT_LAYOUT_PARAMS, **(layout_params or {})}
     gap = float(params["label_anchor_gap"])
@@ -304,36 +407,49 @@ def place_labels(
         bbox for bbox in (_entry_bbox(e) for e in entries) if bbox is not None
     ]
 
-    label_kwargs: dict = {"style_dict": style_dict} if style_dict is not None else {}
     out: list[LayoutEntry] = list(entries)
     failures: list[LabelRequest] = []
+    overflowed: list[LabelRequest] = []
 
     for request in label_requests:
-        label_size = _estimate_text_bbox(request.text, font_size)
-        placed = False
-        for name in request.priority:
-            center = _candidate_center(
-                name, request.anchor, request.anchor_size, label_size, gap
-            )
-            candidate_bbox = _bbox_from_center(center, label_size)
-            if any(_overlaps(candidate_bbox, b, margin) for b in occupied):
-                continue
-            label_ir_id = (
-                f"label_{request.ir_id}" if request.ir_id is not None else None
-            )
-            out.append(LayoutEntry(
-                primitive=_label_primitive,
-                args=(request.text, center),
-                kwargs=label_kwargs,
-                position=(0.0, 0.0),
-                ir_id=label_ir_id,
-            ))
-            occupied.append(candidate_bbox)
-            placed = True
-            break
-        if not placed:
+        center, bbox, font_used, overlap = _place_with_fallback(
+            request, occupied, gap, margin, font_size
+        )
+        if overlap and strict_labels:
             failures.append(request)
+            continue
 
-    if failures:
+        # Per-label kwargs: forward the base style, override the font size
+        # when the ladder shrank it, and flag a last-resort overlap.
+        kwargs: dict = {}
+        if font_used != font_size:
+            kwargs["style_dict"] = {**(style_dict or {}), "label_font_size": font_used}
+        elif style_dict is not None:
+            kwargs["style_dict"] = style_dict
+        if overlap:
+            kwargs["overlap"] = True
+            overflowed.append(request)
+
+        label_ir_id = (
+            f"label_{request.ir_id}" if request.ir_id is not None else None
+        )
+        out.append(LayoutEntry(
+            primitive=_label_primitive,
+            args=(request.text, center),
+            kwargs=kwargs,
+            position=(0.0, 0.0),
+            ir_id=label_ir_id,
+        ))
+        occupied.append(bbox)
+
+    if strict_labels and failures:
         raise LabelPlacementError(failures=failures, entries=out)
+    if overflowed:
+        texts = ", ".join(repr(r.text) for r in overflowed)
+        warnings.warn(
+            f"Placed {len(overflowed)} label(s) with overlap after exhausting "
+            f"the placement ladder: {texts}. Pass strict_labels=True to fail "
+            f"loud instead, or reduce entity/label density.",
+            stacklevel=2,
+        )
     return out

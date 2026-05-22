@@ -55,6 +55,7 @@ from imageGen.layout.panel_layout import (
     DEFAULT_LAYOUT_PARAMS as PANEL_LAYOUT_PARAMS,
     layout_panel,
 )
+from imageGen.layout._geom import entities_per_band, max_entity_bbox
 from imageGen.layout.pathway_layout import (
     DEFAULT_LAYOUT_PARAMS as PATHWAY_LAYOUT_PARAMS,
     _PATHWAY_COMPATIBLE_ARCHETYPES,
@@ -91,6 +92,9 @@ def render_figure(
     smiles_map: dict[str, str] | None = None,
     labels: bool = True,
     dpi: int = 300,
+    display_dpi: int | None = None,
+    canvas: tuple[float, float] | None = None,
+    strict_labels: bool = False,
 ) -> Path:
     """Render an IR Figure to a file and return the resolved output Path.
 
@@ -111,6 +115,9 @@ def render_figure(
         dpi: Output resolution (default 300, journal quality). Forwarded
             to cairosvg for both PNG and PDF; PDFs use it only for any
             embedded raster bitmaps. Ignored when format == "svg".
+        display_dpi: When set (e.g. 96), also writes a low-resolution
+            screen copy at ``<stem>_display.png`` next to the deliverable.
+            Never overwrites the main output. Ignored when format != "png".
 
     Returns:
         Resolved Path to the written file. For non-SVG formats a sibling
@@ -130,21 +137,29 @@ def render_figure(
 
     if labels:
         if ir.panels:
-            entries = _place_labels_per_panel(ir, entries, style_dict)
+            entries = _place_labels_per_panel(
+                ir, entries, style_dict, strict_labels=strict_labels
+            )
         else:
             label_fn = _label_requests_fn(ir.archetype)
             if label_fn is not None:
                 requests = label_fn(ir, entries)
-                entries = place_labels(entries, requests, style_dict=style_dict)
+                entries = place_labels(
+                    entries, requests, style_dict=style_dict,
+                    strict_labels=strict_labels,
+                )
 
     if _needs_watermark(ir):
         entries = _inject_watermark(entries, ir, style_dict)
 
-    canvas = _canvas_size(ir, entries)
+    final_canvas = canvas if canvas is not None else _canvas_size(ir, entries)
     svg_path = output_path if fmt == "svg" else output_path.with_suffix(".svg")
-    _write_svg(entries, canvas, svg_path)
+    _write_svg(entries, final_canvas, svg_path)
     if fmt == "png":
         svg_to_png(svg_path, output_path, dpi=dpi)
+        if display_dpi is not None:
+            display_path = output_path.with_stem(output_path.stem + "_display")
+            svg_to_png(svg_path, display_path, dpi=display_dpi)
     elif fmt == "pdf":
         svg_to_pdf(svg_path, output_path, dpi=dpi)
     return output_path
@@ -219,6 +234,8 @@ def _place_labels_per_panel(
     ir: Figure,
     entries: list[LayoutEntry],
     style_dict: dict[str, Any],
+    *,
+    strict_labels: bool = False,
 ) -> list[LayoutEntry]:
     """Run label placement separately for each panel's slice of entries.
 
@@ -253,7 +270,9 @@ def _place_labels_per_panel(
             continue
         panel_offset = bucket[0].position  # shared by every sub-entry
         requests = label_fn(panel.content, bucket)
-        placed = place_labels(bucket, requests, style_dict=style_dict)
+        placed = place_labels(
+            bucket, requests, style_dict=style_dict, strict_labels=strict_labels
+        )
         result.extend(placed[:len(bucket)])
         for label_entry in placed[len(bucket):]:
             result.append(label_entry._replace(
@@ -301,16 +320,58 @@ def _inject_watermark(
 def _canvas_size(ir: Figure, entries: list[LayoutEntry]) -> tuple[float, float]:
     """Return (width, height) of the SVG viewport.
 
-    Uses pathway_canvas from DEFAULT_LAYOUT_PARAMS for PATHWAY figures.
-    Future steps can inspect entries or pass layout params through instead.
+    Pathway-family figures get a content-aware canvas (see
+    `_compute_pathway_canvas`) clamped to the v1 default `(800, 600)` so
+    small figures stay golden-image-identical. Panels and reactions still
+    use their respective static defaults — those engines lay out within a
+    fixed envelope already.
     """
     if ir.panels:
         return PANEL_LAYOUT_PARAMS["panel_canvas"]
-    if ir.archetype == Archetype.PATHWAY:
-        return PATHWAY_LAYOUT_PARAMS["pathway_canvas"]
+    if ir.archetype in _PATHWAY_COMPATIBLE_ARCHETYPES:
+        return _compute_pathway_canvas(ir)
     if ir.archetype == Archetype.REACTION_SCHEME:
         return REACTION_LAYOUT_PARAMS["reaction_canvas"]
     return _DEFAULT_CANVAS
+
+
+def _compute_pathway_canvas(figure: Figure) -> tuple[float, float]:
+    """Content-aware canvas for pathway-family figures.
+
+    Grows past the v1 (800, 600) floor when the figure has more than
+    `pathway_max_per_row` entities in any band (height grows to fit
+    wrapped rows) or more than a single screen's worth of compartments
+    (height grows so band labels stay legible). Width currently uses the
+    same floor — the wrap heuristic keeps the row width bounded by
+    `pathway_max_per_row * (bbox_w + h_pad)`.
+
+    The `(800, 600)` floor is intentional: every existing fixture in
+    `tests/fixtures/` produces a canvas at exactly the floor and therefore
+    a byte-identical SVG to v1, so the curated golden images don't
+    regenerate. Only "big" figures (with a band over the wrap threshold,
+    or with many compartments) exceed the floor.
+    """
+    min_w, min_h = PATHWAY_LAYOUT_PARAMS["pathway_canvas"]
+    max_per_row = int(PATHWAY_LAYOUT_PARAMS["pathway_max_per_row"])
+    row_v_gap = float(PATHWAY_LAYOUT_PARAMS["pathway_row_v_gap"])
+
+    _, max_h = max_entity_bbox(figure)
+    counts = entities_per_band(figure) or [0]
+    rows_per_band = [max(1, (n + max_per_row - 1) // max_per_row) for n in counts]
+
+    # Per-band height: enough vertical room for `rows` rows of `max_h` tall
+    # entities, plus a generous band label/margin allowance. The 100px
+    # baseline is what the v1 default (600 / 6 compartments = 100) effectively
+    # gave a typical six-band figure, so single-row bands stay sized to v1.
+    BAND_BASELINE = 100.0
+    band_heights = [
+        max(BAND_BASELINE, rows * (max_h + row_v_gap) + 40.0)
+        for rows in rows_per_band
+    ]
+
+    width = min_w  # row width is bounded by max_per_row; min_w already fits it.
+    height = max(min_h, sum(band_heights))
+    return (width, height)
 
 
 def scoped_id(raw_ir_id: str, panel_chain: tuple[str, ...]) -> str:

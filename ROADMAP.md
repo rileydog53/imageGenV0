@@ -51,54 +51,10 @@ in `LIMITATIONS.md`; wrong-figure reports go in `FEEDBACK.md`.
 
 ---
 
-## Workflow per Step
-
-1. **Scope** — restate the step, flag ambiguities. No code yet.
-2. **Test plan** — propose 2–4 concrete tests. Get approval.
-3. **Implement** — code + tests in one change.
-4. **Verify** — run pytest, show output.
-5. **Simplify** — run `/simplify` to review for reuse/quality.
-6. **Commit** — three commits: `docs:` → `feat:` → `test:`.
-7. **TODO update** — update `~/Desktop/TODO.txt` (date + commit SHA).
-
----
-
 ## Key Files
 
 - **`ir/schema.py`** — the IR. Don't change the schema without asking Joey.
-- **`layout/reaction_layout.py`** — establishes the LayoutEntry pattern.
 - **`primitives/*.py`** — visual building blocks; layout code composes them.
 - **`tests/fixtures/`** — hand-crafted IR JSONs for regression testing.
-- **`~/Desktop/TODO.txt`** — authoritative task list. Lives outside the repo.
 - **`DECISIONS.md`** — cross-phase architectural choices (D1–D4).
-- **`BACKLOG.md`** — everything deliberately deferred.
-
----
-
-## Hard Rules
-
-1. **No SVG strings.** Always `svgwrite` element objects.
-2. **Every IR field is validated.** No raw dicts.
-3. **Every primitive gets a golden-image test.**
-4. **Plan before code.** Propose, get a green light, then build.
-5. **Conventions over creativity.** Follow how Nature/Cell draws it.
-6. **All files live in `~/Desktop/imageGen-v0.1/` during dev.**
-
-(Full Hard Rules + Workflow Lessons are in `~/Desktop/TODO.txt`.)
-
----
-
-## Stretch Goals (Don't Build in v1)
-
-Force-directed label placement · automatic palette selection · BioPAX import
-· 3D structure integration via PyMOL · animated figures · LaTeX export.
-
----
-
-## Success Criteria (v1 Done)
-
-- All eight phases complete
-- All golden-image tests passing
-- Joey can run a real prompt end-to-end, get a journal-quality figure
-- Documented limitations and feedback path
-- One worked example per archetype committed
+- **`BACKLOG.md`** — everything deliberately deferred to v2.

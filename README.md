@@ -72,7 +72,33 @@ python -m imageGen tests/fixtures/simple_reaction.json -o rxn.png \
 
 Flags: `--style {cell_press,nature,acs}`, `--format {svg,png,pdf}` (inferred
 from the output suffix when omitted), `--dpi N` (default 300),
-`--smiles-map FILE.json` (required for `REACTION_SCHEME`), `--no-labels`.
+`--smiles-map FILE.json` (required for `REACTION_SCHEME`), `--no-labels`,
+`--canvas WxH` (pin the canvas; default auto-sizes with an 800×600 floor),
+`--strict-labels` (fail loud on unplaceable labels instead of the default
+relax-and-retry fallback), `--verify` (render + run all three verifiers in
+one command), `--crop` (write a `*_cropped` sibling reframed onto the content;
+add `--crop-keep-aspect` to keep canvas proportions).
+
+### Command line — spec mode (shortest path)
+
+Skip hand-writing raw IR JSON: a flat YAML/JSON **spec** is piped through the
+builder (`imageGen.ir.builder.build`) and rendered in one call. Entities and
+relations are positional tuples.
+
+```yaml
+# figure.yaml
+archetype: pathway
+style: nature
+entities:
+  - [ras, protein, Ras]
+  - [raf, kinase, Raf]
+relations:
+  - [ras, activates, raf]
+```
+
+```bash
+python -m imageGen render-spec figure.yaml -o figure.png
+```
 
 ### Python API
 
@@ -83,6 +109,22 @@ from imageGen.render.compositor import render_figure
 
 ir = Figure.model_validate(json.loads(open("figure.json").read()))
 render_figure(ir, "out.png", style_name="cell_press", dpi=300)
+```
+
+Or build the IR with the tuple-friendly `builder` instead of raw JSON — it
+runs everything through the same schema validators:
+
+```python
+from imageGen.ir.builder import build
+from imageGen.render.compositor import render_figure
+
+ir = build(
+    "pathway",
+    entities=[("ras", "protein", "Ras"), ("raf", "kinase", "Raf")],
+    relations=[("ras", "activates", "raf")],
+    style="nature",
+)
+render_figure(ir, "out.png")
 ```
 
 A non-SVG render also writes a sibling `.svg` next to the output for debugging.

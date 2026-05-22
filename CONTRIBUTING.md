@@ -9,33 +9,13 @@ for anyone extending the project. For *using* imageGen, see
 
 Before writing code, read in order:
 
-1. **[ROADMAP.md](ROADMAP.md)** — phase status and what's next.
-2. **[WORKFLOW.md](WORKFLOW.md)** — the three-role rhythm, GitHub issue/PR
-   process, commit structure.
-3. **[WORKFLOW_HABITS.md](WORKFLOW_HABITS.md)** — session start/end checklist,
-   red flags, git hygiene.
-4. **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions
+1. **[ROADMAP.md](ROADMAP.md)** — phase status and key files.
+2. **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions
    (D1–D4: IR-id tagging, watermarking, label auto-invoke, `smiles_map`).
-5. **`~/Desktop/TODO.txt`** — the authoritative task list. Its `IN PROGRESS:`
-   section is the current task; `COMPLETED:` has per-step history. Lives
-   *outside* the repo, so it is never part of a commit.
-6. **The pattern file for your phase** — e.g. `primitives/proteins.py` for a
-   primitive, `layout/reaction_layout.py` for a layout engine. Copy its style.
-
-## Per-step workflow
-
-`scope → test plan → implement → verify → simplify → commit → TODO update`
-
-- **Plan before code.** Even outside plan mode, propose the approach in prose
-  first (signatures, helpers, test list, files touched). Get a green light.
-- **Tests fail first.** A good test catches the bug it's meant to prevent.
-- **Verify.** `~/Desktop/.venv/bin/pytest tests/ -v` — all green.
-- **Simplify.** Run the `/simplify` review before committing.
-- **Three-commit cadence per step:** `docs:` (status + test count) → `feat:`
-  (implementation) → `test:` (tests + fixtures). Easy to revert any layer.
-- **Update `~/Desktop/TODO.txt`** when a step completes (date + commit SHA).
-- **Plan files are step-stamped and archived** — `plan-phaseN.md`, never
-  overwritten.
+3. **[BACKLOG.md](BACKLOG.md)** — everything deliberately deferred; pick up
+   v2 work from here.
+4. **The pattern file for the area you're touching** — e.g. `primitives/proteins.py`
+   for a primitive, `layout/reaction_layout.py` for a layout engine. Copy its style.
 
 ## Hard rules
 

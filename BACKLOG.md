@@ -1,33 +1,19 @@
 # Backlog
 
 Single-source aggregator for every "out of scope" / "deferred" / "v2"
-item flagged across module docstrings, plan files, ROADMAP.md, and
-TODO.txt as of 2026-05-10 (Phase 3 complete).
-
-**Three buckets:**
-
-1. **Cleanup** — chores already flagged in earlier COMPLETED entries.
-   No behavior change; just code-organization debt.
-2. **Deferred to v2** — known functional gaps in the shipped modules
-   that can be lifted later without breaking changes.
-3. **Stretch (post-v1)** — items from `ROADMAP.md` "Stretch Goals" and
-   the master plan's tail. Out of scope for the current build.
-
-Priority is rough — high = blocks reading the codebase or the next
-phase; medium = shows up in real figures soon; low = polish / advanced
-use cases.
+item as of v1.0. Three buckets: **Cleanup** (code-org debt, no behavior
+change), **Deferred to v2** (known functional gaps), **Stretch** (post-v1).
+Priority: high = blocks reading the codebase; medium = shows up in real
+figures soon; low = polish / advanced use cases.
 
 ---
 
-## 1. Cleanup (already-flagged)
+## 1. Cleanup
 
 | # | Item | Source | Priority |
 |---|---|---|---|
-| ~~C1~~ | ✅ **Resolved 2026-05-11 (`b77c5d7`):** `LayoutEntry` lives in `layout/types.py`, re-exported from `layout/__init__.py`. | TODO.txt §pathway DONE; §reaction DONE | ~~**High**~~ |
-| ~~C2~~ | ✅ **Resolved 2026-05-11 (`02ab92c`):** `ENTITY_BBOX` (renamed from `_ENTITY_BBOX`) and `ENTITY_TO_PRIMITIVE` live in `layout/_geom.py`. Lazy import in `label_placement.py` removed. | `label_placement.py:30`; TODO.txt §pathway DONE | ~~**High**~~ |
-| ~~C3~~ | ✅ **Resolved 2026-05-11 (`1a99207`):** `load_fixture`, `render_entries_to_png`, and `render_group_to_png` live in `tests/_helpers.py` (not `conftest.py` — `tests/` is a package; conftest is reserved for pytest fixtures). Migrated 13 test files. | TODO.txt §pathway DONE; §reaction DONE | ~~**Medium**~~ |
-| C4 | Rename module-level `DEFAULT_LAYOUT_PARAMS` symbols (clash across `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) to engine-specific names like `PATHWAY_DEFAULT_PARAMS` if star-imports ever become necessary. | TODO.txt §pathway DONE | **Low** |
-| C5 | `ENTITY_BBOX` table (now in `layout/_geom.py`) tracks each protein primitive's *default* size — keep in sync if a primitive's default size changes. Originally tagged "lift during Phase 4"; reclassified as layout cleanup (presets are aesthetic; bbox is geometric). Lift via the same cleanup commit as L9 if either becomes painful. | `layout/_geom.py`; `phase4-style-presets.md` reclassification | **Medium** |
+| C4 | Rename module-level `DEFAULT_LAYOUT_PARAMS` symbols (clash across `reaction_layout.py`, `pathway_layout.py`, `panel_layout.py`, `label_placement.py`) to engine-specific names like `PATHWAY_DEFAULT_PARAMS` if star-imports ever become necessary. | `reaction_layout.py` etc. | **Low** |
+| C5 | `ENTITY_BBOX` table (in `layout/_geom.py`) tracks each protein primitive's *default* size — keep in sync if a primitive's default size changes. | `layout/_geom.py` | **Medium** |
 
 ---
 
@@ -101,26 +87,6 @@ section:
 
 ## How to use this file
 
-- **Start of a phase:** scan the C-bucket (cleanup) and the L/R/P
-  buckets for items tagged with that phase. Lift them inline if cheap;
-  defer otherwise.
-- **End of a step:** if you discover a new "out of scope" decision,
-  add a row here in the same shape. Don't bury it in module docstrings
-  alone — the docstring stays, but a row here makes it discoverable
-  via one grep.
-- **Phase 4 hand-off (RESOLVED 2026-05-10):** L9 and C5 were
-  originally tagged "lift during Phase 4." On Phase 4 entry they were
-  reclassified as layout cleanup, not style work, and deferred again.
-  Lift before Phase 5 ships if entity sizing or bbox drift becomes
-  painful — otherwise after.
-- **Phase 5 hand-off:** ST2 (lift aesthetic layout-params into
-  presets) is the natural follow-up once the renderer demonstrates
-  how presets are threaded through layout engines. Watch for it.
-- **Phase 6 hand-off:** items L13, P2 explicitly defer to the
-  verification suite. Add legibility checks for both then.
-  ST5 (full-key-set typo guard) also fits naturally here since
-  Phase 6 already validates preset shape against rendered output.
-
-The master plan in `~/Desktop/TODO.txt` and `ROADMAP.md` remain the
-source of truth for *what's next*; this file is the source of truth
-for *what was deliberately skipped*.
+When starting v2 work, scan the relevant bucket for items to lift.
+When you discover a new "out of scope" decision, add a row here in the
+same shape — don't bury it in module docstrings alone.

@@ -121,10 +121,14 @@ def _shift(box: Bbox, ox: float, oy: float) -> Bbox:
     return (box[0] + ox, box[1] + oy, box[2] + ox, box[3] + oy)
 
 
-def _label_box(el: ET.Element) -> tuple[str, float, Bbox]:
-    """Return ``(text, font_size, bbox)`` for a ``<text>``, anchor-corrected.
+def _label_box(el: ET.Element) -> tuple[str, float, Bbox, bool]:
+    """Return ``(text, font_size, bbox, intentional_overlap)`` for a ``<text>``.
 
     The box is in the element's local frame; callers apply translate offsets.
+    ``intentional_overlap`` is True when the element carries
+    ``data-overlap="true"`` — a deliberate last-resort placement from the
+    label engine's fallback ladder, which the overlap audit must not treat
+    as a defect.
     """
     text = (el.text or "").strip()
     font_size = _f(el.get("font-size"))
@@ -142,7 +146,8 @@ def _label_box(el: ET.Element) -> tuple[str, float, Bbox]:
         y0 = y - h / 2
     else:
         y0 = y - h * 0.8  # `y` is the text baseline; box extends mostly above
-    return text, font_size, (x0, y0, x0 + w, y0 + h)
+    intentional_overlap = el.get("data-overlap") == "true"
+    return text, font_size, (x0, y0, x0 + w, y0 + h), intentional_overlap
 
 
 def _geometry_box(el: ET.Element) -> Bbox | None:
@@ -178,11 +183,12 @@ def _walk(
     el: ET.Element,
     ox: float,
     oy: float,
-    labels: list[tuple[str, float, Bbox]],
+    labels: list[tuple[str, float, Bbox, bool]],
     boxes: list[Bbox],
 ) -> None:
     """Collect label tuples and drawable boxes, resolving translate offsets.
 
+    Each label tuple is ``(text, font_size, bbox, intentional_overlap)``.
     A nested ``<svg>`` is treated as an opaque box (its placement
     viewport) and not descended into — its interior is a separate
     coordinate frame. ``<defs>`` is skipped: it holds reusable
@@ -192,6 +198,12 @@ def _walk(
         ctag = _tag(child)
         if ctag == "defs":
             continue
+        # Skip decorative compartment bands entirely — both their full-width
+        # background rect and their corner label are chrome, not figure
+        # content. Including them would make `content_bbox` span the whole
+        # canvas and defeat whitespace/crop detection.
+        if child.get("data-role") == "band":
+            continue
         tx, ty = _parse_translate(child.get("transform"))
         cx, cy = ox + tx, oy + ty
         if ctag == "svg":
@@ -200,10 +212,10 @@ def _walk(
             boxes.append(_shift((x, y, x + w, y + h), cx, cy))
             continue
         if ctag == "text":
-            text, font_size, box = _label_box(child)
+            text, font_size, box, intentional = _label_box(child)
             if text:
                 box = _shift(box, cx, cy)
-                labels.append((text, font_size, box))
+                labels.append((text, font_size, box, intentional))
                 boxes.append(box)
         elif ctag in _GEOMETRY_TAGS:
             box = _geometry_box(child)
@@ -220,6 +232,27 @@ def _union(boxes: list[Bbox]) -> Bbox:
         max(b[2] for b in boxes),
         max(b[3] for b in boxes),
     )
+
+
+def content_bounds(svg_path: str | Path) -> tuple[Bbox, Bbox]:
+    """Return ``(content_bbox, canvas_bbox)`` for a rendered SVG.
+
+    ``content_bbox`` is the union of every drawable element's box **excluding
+    decorative compartment bands** (``data-role="band"``). ``canvas_bbox`` is
+    ``(0, 0, width, height)``. When the figure has no drawable content (only
+    chrome), ``content_bbox`` falls back to ``canvas_bbox``.
+
+    This is the shared primitive behind both the legibility crop signal and
+    the renderer's ``--crop`` feature, so the two always agree on where the
+    figure actually is.
+    """
+    root = ET.parse(str(svg_path)).getroot()
+    labels: list[tuple[str, float, Bbox, bool]] = []
+    boxes: list[Bbox] = []
+    _walk(root, 0.0, 0.0, labels, boxes)
+    canvas = (0.0, 0.0, _f(root.get("width")), _f(root.get("height")))
+    content = _union(boxes) if boxes else canvas
+    return content, canvas
 
 
 def _needs_crop(content: Bbox, canvas: Bbox, fraction: float) -> bool:
@@ -259,11 +292,11 @@ def legibility_check(
         LegibilityCheckError: On the first undersized font or label overlap.
     """
     root = ET.parse(str(svg_path)).getroot()
-    labels: list[tuple[str, float, Bbox]] = []
+    labels: list[tuple[str, float, Bbox, bool]] = []
     boxes: list[Bbox] = []
     _walk(root, 0.0, 0.0, labels, boxes)
 
-    for text, font_size, _box in labels:
+    for text, font_size, _box, _intentional in labels:
         if font_size < min_font_size:
             raise LegibilityCheckError(
                 "font_size",
@@ -273,6 +306,11 @@ def legibility_check(
 
     for i in range(len(labels)):
         for j in range(i + 1, len(labels)):
+            # A label flagged data-overlap="true" is a deliberate last-resort
+            # placement from the fallback ladder — its collisions are expected,
+            # not defects, so don't raise on any pair involving one.
+            if labels[i][3] or labels[j][3]:
+                continue
             if _overlaps(labels[i][2], labels[j][2], overlap_margin):
                 raise LegibilityCheckError(
                     "overlap",
