@@ -39,6 +39,24 @@ DEFAULT_STYLE: dict = {
 # Private geometry helpers
 # ---------------------------------------------------------------------------
 
+def _waypoint_path(
+    waypoints: list[tuple[float, float]],
+    stroke: str,
+    sw: float,
+    dash: str | None = None,
+) -> svgwrite.path.Path:
+    """Straight-segment polyline through *waypoints* as an SVG path element."""
+    d = f"M {waypoints[0][0]:.2f},{waypoints[0][1]:.2f}"
+    for x, y in waypoints[1:]:
+        d += f" L {x:.2f},{y:.2f}"
+    p = svgwrite.path.Path(d=d, fill="none", stroke=stroke)
+    p["stroke-width"] = sw
+    p["stroke-linejoin"] = "miter"
+    if dash:
+        p["stroke-dasharray"] = dash
+    return p
+
+
 def _unit_vector(
     start: tuple[float, float], end: tuple[float, float]
 ) -> tuple[float, float]:
@@ -124,6 +142,7 @@ def activation_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
     curved: bool = False,
+    waypoints: Optional[list[tuple[float, float]]] = None,
     style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
@@ -134,22 +153,33 @@ def activation_arrow(
     perpendicular from the midpoint by 40% of the shaft length.
 
     Args:
-        start:   tail position (x, y) in SVG coordinates
-        end:     tip position (x, y) in SVG coordinates
-        curved:  if True, shaft is a quadratic bezier; otherwise a straight line
-        style_dict:   presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        start:     tail position (x, y) in SVG coordinates
+        end:       tip position (x, y) in SVG coordinates
+        curved:    if True, shaft is a quadratic bezier; otherwise a straight line
+        waypoints: optional list of (x, y) points for an orthogonal elbow shaft.
+                   When provided, ``start``/``end`` are ignored for the shaft (the
+                   first and last waypoints serve as tail and tip respectively), and
+                   the arrowhead direction is taken from the last segment.
+        style_dict: presentation attributes dict; falls back to DEFAULT_STYLE
 
     Returns:
         svgwrite.container.Group containing shaft and filled arrowhead
     """
     s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
-    dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
     sw = float(s["stroke_width"])
     hs = float(s["arrow_head_size"])
 
-    # Stop the shaft short so it doesn't poke through the filled head
+    if waypoints and len(waypoints) >= 2:
+        dx, dy = _unit_vector(waypoints[-2], waypoints[-1])
+        tip = waypoints[-1]
+        shaft_tip = (tip[0] - dx * hs, tip[1] - dy * hs)
+        g.add(_waypoint_path(list(waypoints[:-1]) + [shaft_tip], stroke, sw))
+        g.add(_filled_triangle_head(tip, dx, dy, hs, stroke))
+        return g
+
+    dx, dy = _unit_vector(start, end)
     shaft_end = (end[0] - dx * hs, end[1] - dy * hs)
 
     if curved:
@@ -177,6 +207,7 @@ def inhibition_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
     curved: bool = False,
+    waypoints: Optional[list[tuple[float, float]]] = None,
     style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
@@ -187,21 +218,30 @@ def inhibition_arrow(
     different biological meanings.
 
     Args:
-        start:   tail position (x, y) in SVG coordinates
-        end:     tip / T-bar position (x, y) in SVG coordinates
-        curved:  if True, shaft is a quadratic bezier; otherwise a straight line
-        style_dict:   presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        start:     tail position (x, y) in SVG coordinates
+        end:       tip / T-bar position (x, y) in SVG coordinates
+        curved:    if True, shaft is a quadratic bezier; otherwise a straight line
+        waypoints: optional orthogonal elbow waypoints (see activation_arrow)
+        style_dict: presentation attributes dict; falls back to DEFAULT_STYLE
 
     Returns:
         svgwrite.container.Group containing shaft and T-bar
     """
     s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
-    dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
     sw = float(s["stroke_width"])
     t_width = float(s["t_bar_width"])
 
+    if waypoints and len(waypoints) >= 2:
+        dx, dy = _unit_vector(waypoints[-2], waypoints[-1])
+        tip = waypoints[-1]
+        g.add(_waypoint_path(waypoints, stroke, sw))
+        px, py = _perp_vector(dx, dy)
+        g.add(_t_bar(tip, px, py, t_width, stroke, sw + 1))
+        return g
+
+    dx, dy = _unit_vector(start, end)
     if curved:
         mid = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
         length = math.hypot(end[0] - start[0], end[1] - start[1])
@@ -228,6 +268,7 @@ def inhibition_arrow(
 def binding_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
+    waypoints: Optional[list[tuple[float, float]]] = None,
     style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
@@ -237,20 +278,34 @@ def binding_arrow(
     equilibrium. Head size is 70% of the activation arrow to visually distinguish it.
 
     Args:
-        start:  one endpoint (x, y)
-        end:    other endpoint (x, y)
-        style_dict:  presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        start:     one endpoint (x, y)
+        end:       other endpoint (x, y)
+        waypoints: optional orthogonal elbow waypoints (see activation_arrow).
+                   Heads are placed at waypoints[0] and waypoints[-1].
+        style_dict: presentation attributes dict; falls back to DEFAULT_STYLE
 
     Returns:
         svgwrite.container.Group containing shaft and two filled arrowheads
     """
     s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
-    dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
     sw = float(s["stroke_width"])
     hs = float(s["arrow_head_size"]) * 0.7  # slightly smaller heads for binding
 
+    if waypoints and len(waypoints) >= 2:
+        dx0, dy0 = _unit_vector(waypoints[1], waypoints[0])   # reverse: tail direction
+        dxN, dyN = _unit_vector(waypoints[-2], waypoints[-1])  # forward: head direction
+        tail = waypoints[0]
+        tip = waypoints[-1]
+        shaft_tail = (tail[0] - dx0 * hs, tail[1] - dy0 * hs)
+        shaft_tip = (tip[0] - dxN * hs, tip[1] - dyN * hs)
+        g.add(_waypoint_path([shaft_tail] + list(waypoints[1:-1]) + [shaft_tip], stroke, sw))
+        g.add(_filled_triangle_head(tip, dxN, dyN, hs, stroke))
+        g.add(_filled_triangle_head(tail, dx0, dy0, hs, stroke))
+        return g
+
+    dx, dy = _unit_vector(start, end)
     shaft_start = (start[0] + dx * hs, start[1] + dy * hs)
     shaft_end = (end[0] - dx * hs, end[1] - dy * hs)
 
@@ -265,6 +320,7 @@ def binding_arrow(
 def translocation_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
+    waypoints: Optional[list[tuple[float, float]]] = None,
     style_dict: Optional[dict] = None,
 ) -> svgwrite.container.Group:
     """
@@ -274,21 +330,30 @@ def translocation_arrow(
     The open head distinguishes translocation from activation (which uses a filled head).
 
     Args:
-        start:  tail position (x, y)
-        end:    tip position (x, y)
-        style_dict:  presentation attributes dict; falls back to DEFAULT_STYLE for missing keys
+        start:     tail position (x, y)
+        end:       tip position (x, y)
+        waypoints: optional orthogonal elbow waypoints (see activation_arrow)
+        style_dict: presentation attributes dict; falls back to DEFAULT_STYLE
 
     Returns:
         svgwrite.container.Group containing dashed shaft and open arrowhead
     """
     s = {**DEFAULT_STYLE, **(style_dict or {})}
     g = svgwrite.container.Group()
-    dx, dy = _unit_vector(start, end)
     stroke = s["stroke"]
     sw = float(s["stroke_width"])
     hs = float(s["arrow_head_size"])
     dash = s["dash_array"]
 
+    if waypoints and len(waypoints) >= 2:
+        dx, dy = _unit_vector(waypoints[-2], waypoints[-1])
+        tip = waypoints[-1]
+        shaft_tip = (tip[0] - dx * hs, tip[1] - dy * hs)
+        g.add(_waypoint_path(list(waypoints[:-1]) + [shaft_tip], stroke, sw, dash=str(dash)))
+        g.add(_open_triangle_head(tip, dx, dy, hs, stroke, sw))
+        return g
+
+    dx, dy = _unit_vector(start, end)
     shaft_end = (end[0] - dx * hs, end[1] - dy * hs)
     line = svgwrite.shapes.Line(start=start, end=shaft_end, stroke=stroke)
     line["stroke-width"] = sw

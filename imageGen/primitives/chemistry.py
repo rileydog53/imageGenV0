@@ -352,15 +352,45 @@ def render_reaction(
     arrow_len = float(style["chem_reaction_arrow_length"])
     plus_size = int(style["chem_reaction_plus_font_size"])
     plus_color = str(style["chem_reaction_plus_color"])
+    cond_size = int(style["chem_conditions_font_size"])
+    cond_offset = float(style["chem_conditions_offset"])
+    line_gap = cond_size * 1.3  # leading between wrapped lines
+
+    def _wrap(text: str, max_chars: int = 28) -> list[str]:
+        """Split long condition strings at ', ' boundaries into ≤max_chars lines."""
+        if len(text) <= max_chars:
+            return [text]
+        parts = text.split(", ")
+        lines: list[str] = []
+        current = ""
+        for part in parts:
+            candidate = f"{current}, {part}" if current else part
+            if len(candidate) > max_chars and current:
+                lines.append(current)
+                current = part
+            else:
+                current = candidate
+        if current:
+            lines.append(current)
+        return lines or [text]
+
+    # Pre-compute above-condition lines so we know how much top padding is needed
+    # before placing molecules.  All molecule/arrow y-coords shift down by top_pad
+    # so the "above" text sits in positive SVG space and is never clipped.
+    above_lines: list[str] = []
+    if conditions and conditions.get("above"):
+        above_lines = _wrap(str(conditions["above"]))
+    top_pad = (len(above_lines) * line_gap + cond_offset) if above_lines else 0.0
 
     group = svgwrite.container.Group()
-    midline_y = mol_h / 2.0
+    mol_top = top_pad                 # y where molecules' top edge sits
+    midline_y = mol_top + mol_h / 2.0
 
     def _place_block(smiles_list: list[str], cursor: float) -> float:
         for i, smi in enumerate(smiles_list):
             mol = _smiles_to_mol(smi)
             group.add(_inline_molecule(mol, (mol_w, mol_h), "skeletal", style,
-                                       translate=(cursor, 0.0)))
+                                       translate=(cursor, mol_top)))
             cursor += mol_w
             if i < len(smiles_list) - 1:
                 cursor += gap
@@ -381,8 +411,6 @@ def render_reaction(
 
     if conditions:
         arrow_mid_x = cursor + arrow_len / 2.0
-        cond_size = int(style["chem_conditions_font_size"])
-        cond_offset = float(style["chem_conditions_offset"])
 
         def _condition_text(text: str, y: float) -> svgwrite.text.Text:
             return svgwrite.text.Text(
@@ -393,12 +421,19 @@ def render_reaction(
                 text_anchor="middle",
             )
 
-        if conditions.get("above"):
-            group.add(_condition_text(str(conditions["above"]),
-                                      midline_y - cond_offset))
+        if above_lines:
+            # Lines stack above mol_top; bottom line (closest) has baseline at
+            # mol_top - cond_offset.  Earlier lines step up by line_gap each.
+            n = len(above_lines)
+            for i, line in enumerate(above_lines):
+                y = mol_top - cond_offset - line_gap * (n - 1 - i)
+                group.add(_condition_text(line, y))
         if conditions.get("below"):
-            group.add(_condition_text(str(conditions["below"]),
-                                      midline_y + cond_offset + cond_size))
+            # First line sits just below the molecule bottom.
+            group.add(_condition_text(
+                str(conditions["below"]),
+                mol_top + mol_h + cond_offset + cond_size,
+            ))
 
     cursor += arrow_len + gap
     _place_block(products_smiles, cursor)

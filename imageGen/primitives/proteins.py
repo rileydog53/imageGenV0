@@ -296,17 +296,18 @@ def receptor(
     body["stroke-width"] = sw
     g.add(body)
 
-    # Label sits to the right of the receptor body in canonical orientation.
-    # When orientation rotates the group, the label rotates with it — that's correct
-    # because labels should follow the protein.
+    # Label sits to the LEFT of the receptor body, vertically centered.
+    # Above-placement was the original position but it collides with incoming
+    # vertical arrows (ligand-binding arrows arrive at the extracellular tip).
+    # The left side is always clear of arrows, which enter/exit top and bottom.
     label_t = svgwrite.text.Text(
         label,
-        insert=(cx + ec_w / 2 + 8, cy),
+        insert=(cx - ec_w / 2 - 6, cy),
         font_family=s["label_font_family"],
         font_size=float(s["label_font_size"]),
         fill=s["label_font_color"],
     )
-    label_t["text-anchor"] = "start"
+    label_t["text-anchor"] = "end"
     label_t["dominant-baseline"] = "central"
     g.add(label_t)
 

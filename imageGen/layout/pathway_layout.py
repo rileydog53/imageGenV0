@@ -79,7 +79,7 @@ from imageGen.primitives import arrows
 # ---------------------------------------------------------------------------
 
 DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
-    "pathway_canvas":            (800.0, 600.0),    # (w, h) of figure area
+    "pathway_canvas":            (800.0, 600.0),    # (w, h) — also the min-size floor
     "pathway_origin":            (0.0, 0.0),        # top-left of canvas
     "pathway_band_padding":      40.0,              # horizontal padding inside band
     "pathway_seed":              42,                # NetworkX RNG seed
@@ -90,6 +90,11 @@ DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
     "pathway_band_label_color":  "#4A5C68",
     "pathway_band_label_size":   11,
     "pathway_band_label_family": "Helvetica, Arial, sans-serif",
+    # Band-wrap knobs (v2). When a band has more entities than fit on one
+    # row, _graph_positions wraps them onto additional rows. The compositor
+    # reads these to grow the canvas accordingly.
+    "pathway_max_per_row":       6,                 # entities per band row before wrap
+    "pathway_row_v_gap":         16.0,              # px between wrapped rows in a band
 }
 
 
@@ -180,6 +185,8 @@ def _graph_positions(
     origin: tuple[float, float],
     padding: float,
     seed: int,
+    max_per_row: int = 6,
+    row_v_gap: float = 16.0,
 ) -> dict[str, tuple[float, float]]:
     """Compute (x, y) for every entity.
 
@@ -188,6 +195,12 @@ def _graph_positions(
     `nx.spring_layout` to give the relation graph a say in horizontal
     ordering, then evenly spaced inside the band's horizontal extent so
     primitives don't overlap.
+
+    Band wrap (v2): when a band holds more than `max_per_row` entities,
+    rows are stacked vertically around the band's center line with
+    `row_v_gap` px of vertical breathing room between row centers.
+    Backwards-compatible for small bands: `n <= max_per_row` produces a
+    single row at the band center, byte-identical to the v1 placement.
     """
     G = nx.Graph()
     for e in figure.entities:
@@ -207,6 +220,11 @@ def _graph_positions(
     w, _ = canvas
     ox, _ = origin
     inner_w = max(w - 2 * padding, 1.0)
+    # Row height for vertical stacking. Use the max entity height in the
+    # figure so kinase (32) and receptor (60) entities don't clip rows
+    # narrower than themselves.
+    from imageGen.layout._geom import ENTITY_BBOX  # noqa: PLC0415 — local to avoid cycle
+    row_h = max(ENTITY_BBOX[e.type][1] for e in figure.entities) if figure.entities else 30.0
 
     by_band: dict[str, list[Entity]] = {}
     for e in figure.entities:
@@ -223,9 +241,19 @@ def _graph_positions(
             key=lambda e: (raw.get(e.id, (0.0, 0.0))[0], e.id),
         )
         n = len(sorted_ents)
+        n_rows = max(1, (n + max_per_row - 1) // max_per_row)
         for i, e in enumerate(sorted_ents):
-            x = ox + w / 2 if n == 1 else ox + padding + inner_w * i / (n - 1)
-            pos[e.id] = (x, center_y)
+            row = i // max_per_row
+            col = i % max_per_row
+            # cols_in_row matters only for the final, possibly-partial row.
+            cols_in_row = min(max_per_row, n - row * max_per_row)
+            if cols_in_row == 1:
+                x = ox + w / 2
+            else:
+                x = ox + padding + inner_w * col / (cols_in_row - 1)
+            # Stack rows vertically, centered around the band center.
+            y_offset = (row - (n_rows - 1) / 2) * (row_h + row_v_gap)
+            pos[e.id] = (x, center_y + y_offset)
     return pos
 
 
@@ -272,6 +300,60 @@ def _arrow_endpoints(
     return start, end
 
 
+def _orthogonal_waypoints(
+    src_center: tuple[float, float],
+    src_bbox: tuple[float, float],
+    src_band: tuple[float, float],
+    tgt_center: tuple[float, float],
+    tgt_bbox: tuple[float, float],
+    tgt_band: tuple[float, float],
+    gap: float,
+) -> list[tuple[float, float]]:
+    """Compute a 4-point orthogonal (elbow) path from src to tgt.
+
+    For entities in different bands the path travels through the clear
+    corridor between the two bands (no entities occupy that space), so
+    it is guaranteed not to pass through any third entity box.
+
+    For entities in the same band the path routes through a corridor
+    above the band top (outside the band), which may briefly exit the
+    canvas for the top-most band but is still rendered correctly by SVG.
+
+    Returns a 4-element list: [tail_exit, elbow_src, elbow_tgt, head_enter].
+    The first and last points land on the bbox perimeters of source and
+    target respectively; the middle two define the horizontal corridor leg.
+    """
+    sx, sy = src_center
+    tx, ty = tgt_center
+    shw, shh = src_bbox[0] / 2, src_bbox[1] / 2
+    thw, thh = tgt_bbox[0] / 2, tgt_bbox[1] / 2
+    src_top, src_bottom = src_band
+    tgt_top, tgt_bottom = tgt_band
+
+    if src_band == tgt_band:
+        # Route above both entity tops within the band, not above the band boundary.
+        # This keeps the corridor inside the canvas even when the band spans the
+        # full height (single implicit band for figures with no compartments).
+        clearance = max(gap * 4, 16.0)
+        corridor_y = min(sy - shh, ty - thh) - clearance
+        tail = (sx, sy - shh - gap)
+        head = (tx, ty - thh - gap)
+        return [tail, (sx, corridor_y), (tx, corridor_y), head]
+
+    if src_bottom <= tgt_top:
+        # src band is above tgt band in the figure (lower y_range in SVG).
+        corridor_y = (src_bottom + tgt_top) / 2
+        tail = (sx, sy + shh + gap)
+        head = (tx, ty - thh - gap)
+    else:
+        # src band is below tgt band.
+        corridor_y = (tgt_bottom + src_top) / 2
+        tail = (sx, sy - shh - gap)
+        head = (tx, ty + thh + gap)
+
+    return [tail, (sx, corridor_y), (tx, corridor_y), head]
+
+
 def _compartment_band(
     label: str,
     x: float,
@@ -288,6 +370,12 @@ def _compartment_band(
     inside the helper) and keeps band visuals owned by the layout engine.
     """
     g = svgwrite.container.Group()
+    # Mark the band group as decorative chrome (not figure content). The crop
+    # / whitespace logic excludes data-role="band" subtrees so a full-canvas
+    # background band doesn't defeat content-bbox detection. debug=False lets
+    # svgwrite emit the non-allowlisted data-* attribute.
+    g._parameter.debug = False
+    g.attribs["data-role"] = "band"
     rect = svgwrite.shapes.Rect(
         insert=(x, y),
         size=(w, h),
@@ -355,6 +443,8 @@ def layout_pathway(
         figure, bands, location_map, canvas, origin,
         padding=float(params["pathway_band_padding"]),
         seed=int(params["pathway_seed"]),
+        max_per_row=int(params["pathway_max_per_row"]),
+        row_v_gap=float(params["pathway_row_v_gap"]),
     )
 
     style_kwargs: dict = {"style_dict": style_dict} if style_dict is not None else {}
@@ -397,10 +487,16 @@ def layout_pathway(
             positions[r.target], ENTITY_BBOX[tgt.type],
             arrow_gap,
         )
+        wps = _orthogonal_waypoints(
+            positions[r.source], ENTITY_BBOX[src.type], bands[location_map[r.source]],
+            positions[r.target], ENTITY_BBOX[tgt.type], bands[location_map[r.target]],
+            arrow_gap,
+        )
+        arrow_kwargs: dict = {**style_kwargs, "waypoints": wps}
         entries.append(_entry(
             RELATION_TO_ARROW[r.type],
             (start, end),
-            style_kwargs,
+            arrow_kwargs,
             ir_id=r.ir_id,
         ))
 
