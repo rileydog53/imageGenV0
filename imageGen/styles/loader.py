@@ -16,11 +16,18 @@ Design (locked-in for v1):
   - `palette` (8 entries) is informational + grep-able. The loader
     does NOT auto-derive primitive fills from palette indices; each
     `*_fill` override is explicit. Palette-to-key auto-derivation is
-    flagged in BACKLOG.md as a v2 stretch.
+    flagged in BACKLOG.md as a V2 stretch.
   - `meta` (name + description) is required so a glance at the JSON
     explains what the preset is for.
   - Validation uses the same Pydantic v2 + `extra="forbid"` idiom as
     `ir/schema.py`, keeping the discipline consistent with IR fixtures.
+
+V2 / ST5 — unknown-key validation:
+  ``KNOWN_STYLE_KEYS`` is assembled at import time by unioning every
+  primitive module's ``DEFAULT_STYLE`` key set. ``load_preset_full``
+  emits a ``UserWarning`` for any key in ``overrides`` that isn't in
+  this set — a cheap typo guard that never breaks callers (warn, not
+  raise).  Add keys here when a new primitive module is introduced.
 
 Layout-params (`pathway_canvas`, `panel_margin`, `pathway_seed`, …)
 are NOT in the preset — they're geometric/behavioral and caller-set.
@@ -36,6 +43,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +55,63 @@ DEFAULT_PRESET = "cell_press"
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
+# ---------------------------------------------------------------------------
+# V2 / ST5: master key set — union of every primitive module's DEFAULT_STYLE.
+# Assembled once at import time; used by load_preset_full to warn on typos.
+# When adding a new primitive module, import it below and add it to the list.
+# ---------------------------------------------------------------------------
+
+def _collect_known_style_keys() -> frozenset[str]:
+    """Return the union of all primitive DEFAULT_STYLE key sets."""
+    from imageGen.primitives import (  # noqa: PLC0415 (local import intentional)
+        arrows,
+        cells,
+        chemistry,
+        lab_equipment,
+        membranes,
+        nucleic_acids,
+        proteins,
+    )
+    keys: set[str] = set()
+    for mod in (arrows, cells, chemistry, lab_equipment, membranes, nucleic_acids, proteins):
+        keys |= set(mod.DEFAULT_STYLE.keys())
+    return frozenset(keys)
+
+
+KNOWN_STYLE_KEYS: frozenset[str] = _collect_known_style_keys()
+
+
+# ---------------------------------------------------------------------------
+# V2 / ST2: aesthetic layout-param key set.
+# These are the *aesthetic* knobs from each layout engine's *_DEFAULT_PARAMS
+# dict — colors, strokes, font sizes/families — that make sense to carry in a
+# journal preset. Geometric/behavioral knobs (canvas size, seed, padding, …)
+# are caller-set and intentionally excluded.
+#
+# Hardcoded here (not imported from layout engines) to avoid a circular import:
+# styles/ sits below layout/ in the dependency graph, so importing
+# pathway_layout here would create a cycle.
+# Update this set when a new aesthetic param is added to any layout engine.
+# ---------------------------------------------------------------------------
+
+KNOWN_LAYOUT_PARAMS: frozenset[str] = frozenset({
+    # pathway_layout aesthetic keys
+    "pathway_band_fill",
+    "pathway_band_stroke",
+    "pathway_band_stroke_width",
+    "pathway_band_label_color",
+    "pathway_band_label_size",
+    "pathway_band_label_family",
+    # panel_layout aesthetic keys
+    "panel_border_stroke",
+    "panel_border_stroke_width",
+    "panel_border_fill",
+    "panel_title_color",
+    "panel_title_size",
+    "panel_title_family",
+    "panel_title_weight",
+})
+
 
 class _PresetMeta(BaseModel):
     model_config = {"extra": "forbid"}
@@ -57,15 +122,22 @@ class _PresetMeta(BaseModel):
 class StylePreset(BaseModel):
     """Validated journal-style preset.
 
-    The `overrides` dict is the payload primitives consume. `meta` and
-    `palette` are introspectable via `load_preset_full(name)` for
-    callers (e.g. tests, future renderer chrome) that need them.
+    The `overrides` dict is the payload primitives consume (style_dict=).
+    `layout_overrides` (V2/ST2) carries aesthetic layout-engine knobs
+    (colors, strokes, font sizes) that belong to the preset's visual
+    identity but live in layout engines rather than primitives. Pass it
+    as `layout_params=` to any layout engine call; the engine merges it
+    onto its own *_DEFAULT_PARAMS.
+
+    `meta` and `palette` are introspectable via `load_preset_full(name)`
+    for callers (e.g. tests, future renderer chrome) that need them.
     """
     model_config = {"extra": "forbid"}
 
     meta: _PresetMeta
     palette: list[str] = Field(min_length=8, max_length=8)
     overrides: dict[str, Any] = Field(default_factory=dict)
+    layout_overrides: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("palette")
     @classmethod
@@ -93,6 +165,11 @@ def load_preset_full(name: str = DEFAULT_PRESET) -> StylePreset:
     Useful for tests + future renderer chrome that needs `meta` /
     `palette`. Most callers want `load_style` instead.
 
+    V2 / ST5: emits a ``UserWarning`` for any key in ``overrides`` that
+    is not present in ``KNOWN_STYLE_KEYS`` (the union of all primitive
+    ``DEFAULT_STYLE`` dicts). This is a typo guard — it never raises so
+    callers are never broken by it.
+
     Raises:
         FileNotFoundError: name has no matching JSON in styles/.
         pydantic.ValidationError: schema check failed (missing meta,
@@ -105,7 +182,26 @@ def load_preset_full(name: str = DEFAULT_PRESET) -> StylePreset:
             f"No style preset named {name!r} in {PRESET_DIR}; "
             f"available: {available}"
         )
-    return StylePreset.model_validate(json.loads(path.read_text()))
+    preset = StylePreset.model_validate(json.loads(path.read_text()))
+    unknown_style = sorted(set(preset.overrides) - KNOWN_STYLE_KEYS)
+    if unknown_style:
+        warnings.warn(
+            f"Style preset {name!r} contains unknown override key(s): "
+            f"{unknown_style!r}. Check for typos against KNOWN_STYLE_KEYS in "
+            f"imageGen.styles.loader.",
+            UserWarning,
+            stacklevel=2,
+        )
+    unknown_layout = sorted(set(preset.layout_overrides) - KNOWN_LAYOUT_PARAMS)
+    if unknown_layout:
+        warnings.warn(
+            f"Style preset {name!r} contains unknown layout_override key(s): "
+            f"{unknown_layout!r}. Check for typos against KNOWN_LAYOUT_PARAMS in "
+            f"imageGen.styles.loader.",
+            UserWarning,
+            stacklevel=2,
+        )
+    return preset
 
 
 def load_style(name: str = DEFAULT_PRESET) -> dict:
@@ -124,3 +220,28 @@ def load_style(name: str = DEFAULT_PRESET) -> dict:
         pydantic.ValidationError: malformed preset JSON.
     """
     return load_preset_full(name).overrides
+
+
+def load_layout_params(name: str = DEFAULT_PRESET) -> dict:
+    """Load a journal preset → aesthetic layout-params dict for layout engines.
+
+    V2 / ST2. Returns the preset's ``layout_overrides`` block — the
+    aesthetic layout-engine knobs (band colors, panel border, font sizes, …)
+    that belong to the preset's visual identity. Pass directly as
+    ``layout_params=…`` to any layout engine; the engine merges it onto
+    its own ``*_DEFAULT_PARAMS``, so geometric/behavioral knobs not in
+    the preset are unaffected.
+
+    Args:
+        name: Preset stem (e.g. "cell_press"). Defaults to cell_press.
+
+    Returns:
+        The preset's ``layout_overrides`` block as a flat dict. Empty dict
+        when the preset carries no layout overrides (any engine's own
+        defaults apply in full).
+
+    Raises:
+        FileNotFoundError: unknown preset name.
+        pydantic.ValidationError: malformed preset JSON.
+    """
+    return load_preset_full(name).layout_overrides

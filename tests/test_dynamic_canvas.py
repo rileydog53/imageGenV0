@@ -4,7 +4,7 @@ from collections import Counter
 
 from imageGen.ir.builder import build
 from imageGen.render.compositor import _canvas_size, _compute_pathway_canvas, render_figure
-from imageGen.layout.pathway_layout import _graph_positions, DEFAULT_LAYOUT_PARAMS
+from imageGen.layout.pathway_layout import _graph_positions, PATHWAY_DEFAULT_PARAMS
 from imageGen.layout._geom import max_entity_bbox, entities_per_band, ENTITY_BBOX
 from imageGen.ir.schema import EntityType, Figure
 
@@ -53,16 +53,20 @@ def mapk_cascade_figure():
 
 
 def test_small_figure_canvas_is_floor(simple_figure_4_entities):
-    """4-entity pathway -> _canvas_size returns exactly (800.0, 600.0)."""
+    """4-entity pathway (1 implicit band) -> height = _BAND_BASELINE (L19 floor)."""
     canvas_w, canvas_h = _compute_pathway_canvas(simple_figure_4_entities)
-    assert (canvas_w, canvas_h) == (800.0, 600.0)
+    assert canvas_w == 800.0
+    # L19: floor is n_bands * _BAND_BASELINE (1 * 100) not the old hardcoded 600.
+    assert canvas_h == 100.0
 
 
 def test_two_entity_no_relations_canvas_is_floor():
-    """Build 2 entities -> _canvas_size returns exactly (800.0, 600.0)."""
+    """Build 2 entities (1 implicit band) -> height = _BAND_BASELINE (L19 floor)."""
     figure = build('pathway', entities=[('a', 'protein', 'A'), ('b', 'protein', 'B')])
     canvas_w, canvas_h = _compute_pathway_canvas(figure)
-    assert (canvas_w, canvas_h) == (800.0, 600.0)
+    assert canvas_w == 800.0
+    # L19: floor is 1 * 100 not 600.
+    assert canvas_h == 100.0
 
 
 def test_empty_figure_canvas_is_floor():
@@ -255,4 +259,5 @@ def test_render_small_figure_byte_identical_canvas(tmp_path, mapk_cascade_figure
     width, height = _get_svg_dimensions(svg_content)
 
     assert width == 800.0
-    assert height == 600.0
+    # L19: 1-band figure floor is _BAND_BASELINE (100), not the old hardcoded 600.
+    assert height == 100.0

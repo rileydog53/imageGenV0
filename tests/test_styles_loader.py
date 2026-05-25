@@ -12,9 +12,12 @@ from imageGen.layout.reaction_layout import layout_reaction
 from imageGen.layout.types import LayoutEntry
 from imageGen.styles.loader import (
     DEFAULT_PRESET,
+    KNOWN_LAYOUT_PARAMS,
+    KNOWN_STYLE_KEYS,
     PRESET_DIR,
     StylePreset,
     list_presets,
+    load_layout_params,
     load_preset_full,
     load_style,
 )
@@ -159,6 +162,187 @@ def test_acs_has_monochrome_protein_fills():
         r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
         # Greyscale = R == G == B (ACS uses pure grey for all non-chemistry fills).
         assert r == g == b, f"{k} = {p.overrides[k]} is not pure grey"
+
+
+# ---------------------------------------------------------------------------
+# V2 / ST2: KNOWN_LAYOUT_PARAMS and load_layout_params
+# ---------------------------------------------------------------------------
+
+def test_known_layout_params_is_nonempty_frozenset():
+    """KNOWN_LAYOUT_PARAMS must be a non-empty frozenset (ST2 guard is live)."""
+    assert isinstance(KNOWN_LAYOUT_PARAMS, frozenset)
+    assert len(KNOWN_LAYOUT_PARAMS) > 0
+
+
+def test_known_layout_params_contains_key_aesthetic_params():
+    """Spot-check: representative aesthetic keys from each layout engine."""
+    expected = {
+        "pathway_band_fill", "pathway_band_stroke", "pathway_band_stroke_width",
+        "pathway_band_label_color", "pathway_band_label_size", "pathway_band_label_family",
+        "panel_border_stroke", "panel_border_stroke_width", "panel_border_fill",
+        "panel_title_color", "panel_title_size", "panel_title_family", "panel_title_weight",
+    }
+    missing = expected - KNOWN_LAYOUT_PARAMS
+    assert not missing, f"Keys missing from KNOWN_LAYOUT_PARAMS: {sorted(missing)}"
+
+
+def test_known_layout_params_excludes_geometric_knobs():
+    """Geometric / behavioral params must NOT appear in KNOWN_LAYOUT_PARAMS."""
+    geometric = {
+        "pathway_canvas", "pathway_origin", "pathway_seed",
+        "pathway_band_padding", "pathway_arrow_gap",
+        "panel_canvas", "panel_margin", "panel_gutter",
+        "reaction_canvas", "reaction_origin",
+    }
+    overlap = geometric & KNOWN_LAYOUT_PARAMS
+    assert not overlap, f"Geometric keys leaked into KNOWN_LAYOUT_PARAMS: {sorted(overlap)}"
+
+
+def test_load_layout_params_returns_dict():
+    """load_layout_params must return a dict for each shipped preset."""
+    for name in ["cell_press", "nature", "acs"]:
+        params = load_layout_params(name)
+        assert isinstance(params, dict), f"{name}: expected dict"
+
+
+def test_load_layout_params_contains_pathway_band_fill():
+    """Each shipped preset must provide pathway_band_fill in layout_overrides."""
+    for name in ["cell_press", "nature", "acs"]:
+        params = load_layout_params(name)
+        assert "pathway_band_fill" in params, f"{name}: missing pathway_band_fill"
+
+
+def test_shipped_presets_have_no_unknown_layout_keys():
+    """All shipped presets must load without a UserWarning for layout_overrides."""
+    import warnings as _warnings
+    for name in ["cell_press", "nature", "acs"]:
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("error", UserWarning)
+            load_preset_full(name)
+
+
+def test_unknown_layout_override_key_emits_warning(tmp_path, monkeypatch):
+    """A preset with a typo in layout_overrides must emit a UserWarning."""
+    import warnings as _warnings
+    bad = tmp_path / "bad_layout.json"
+    bad.write_text(json.dumps({
+        "meta": {"name": "bad_layout", "description": "test"},
+        "palette": ["#" + "0" * 6] * 8,
+        "overrides": {},
+        "layout_overrides": {"pathway_band_colour": "#FF0000"},  # typo: colour vs color
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    with _warnings.catch_warnings(record=True) as w:
+        _warnings.simplefilter("always")
+        load_preset_full("bad_layout")
+    layout_warns = [x for x in w if "layout_override" in str(x.message)]
+    assert len(layout_warns) == 1
+    assert "pathway_band_colour" in str(layout_warns[0].message)
+
+
+@pytest.mark.parametrize("preset", ["cell_press", "nature", "acs"])
+def test_layout_overrides_flow_into_pathway_layout(preset):
+    """layout_overrides from a preset must reach the layout engine band params."""
+    from imageGen.layout.pathway_layout import layout_pathway, _compartment_band
+    from tests._helpers import load_fixture
+    fig = load_fixture("mapk_cascade.json")
+    layout_p = load_layout_params(preset)
+    entries = layout_pathway(fig, layout_params=layout_p)
+    band_entries = [e for e in entries if e.primitive is _compartment_band]
+    assert band_entries, "No band entries produced"
+    for entry in band_entries:
+        assert entry.kwargs["params"]["pathway_band_fill"] == layout_p["pathway_band_fill"]
+
+
+def test_acs_layout_uses_serif_fonts():
+    """ACS preset must carry serif band-label and panel-title fonts."""
+    params = load_layout_params("acs")
+    assert "Times" in params["pathway_band_label_family"]
+    assert "Times" in params["panel_title_family"]
+
+
+# ---------------------------------------------------------------------------
+# Render-to-PNG goldens (3 presets × 2 fixtures = 6 files)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# V2 / ST5: KNOWN_STYLE_KEYS and unknown-key warning
+# ---------------------------------------------------------------------------
+
+def test_known_style_keys_is_nonempty_frozenset():
+    """KNOWN_STYLE_KEYS must be a non-empty frozenset (ST5 guard is live)."""
+    assert isinstance(KNOWN_STYLE_KEYS, frozenset)
+    assert len(KNOWN_STYLE_KEYS) > 0
+
+
+def test_known_style_keys_contains_core_primitives():
+    """Spot-check: representative keys from each primitive module are present."""
+    expected = {
+        # proteins
+        "protein_fill", "kinase_fill", "gpcr_helix_fill", "tf_fill",
+        # arrows
+        "stroke", "stroke_width", "arrow_head_size",
+        # membranes
+        "bilayer_head_fill", "nuclear_outer_stroke",
+        # cells
+        "cell_fill", "organelle_mito_fill",
+        # chemistry
+        "chem_bond_stroke", "chem_atom_N",
+        # nucleic_acids
+        "dna_strand1_stroke", "rna_stroke",
+        # lab_equipment
+        "tube_body_fill", "gel_lane_fill",
+        # shared label keys
+        "label_font_family", "label_font_size", "label_font_color",
+    }
+    missing = expected - KNOWN_STYLE_KEYS
+    assert not missing, f"Keys missing from KNOWN_STYLE_KEYS: {sorted(missing)}"
+
+
+def test_shipped_presets_have_no_unknown_keys():
+    """All shipped presets (cell_press, nature, acs) must load without a warning."""
+    import warnings as _warnings
+    for name in ["cell_press", "nature", "acs"]:
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("error", UserWarning)
+            load_preset_full(name)  # would raise if any key is unknown
+
+
+def test_unknown_override_key_emits_warning(tmp_path, monkeypatch):
+    """A preset with a typo'd key must emit a UserWarning (not raise)."""
+    import warnings as _warnings
+    bad = tmp_path / "typo.json"
+    bad.write_text(json.dumps({
+        "meta": {"name": "typo", "description": "test"},
+        "palette": ["#" + "0" * 6] * 8,
+        "overrides": {"protien_fill": "#FF0000"},  # deliberate typo
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    with _warnings.catch_warnings(record=True) as w:
+        _warnings.simplefilter("always")
+        load_preset_full("typo")
+    assert len(w) == 1
+    assert issubclass(w[0].category, UserWarning)
+    assert "protien_fill" in str(w[0].message)
+
+
+def test_multiple_unknown_keys_all_reported(tmp_path, monkeypatch):
+    """All unknown keys are reported in a single warning (not one per key)."""
+    import warnings as _warnings
+    bad = tmp_path / "multi.json"
+    bad.write_text(json.dumps({
+        "meta": {"name": "multi", "description": "test"},
+        "palette": ["#" + "0" * 6] * 8,
+        "overrides": {"fake_key_a": 1, "fake_key_b": 2},
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    with _warnings.catch_warnings(record=True) as w:
+        _warnings.simplefilter("always")
+        load_preset_full("multi")
+    assert len(w) == 1
+    msg = str(w[0].message)
+    assert "fake_key_a" in msg
+    assert "fake_key_b" in msg
 
 
 # ---------------------------------------------------------------------------

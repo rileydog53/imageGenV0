@@ -89,6 +89,7 @@ DEFAULT_STYLE: dict[str, object] = {
     "chem_conditions_font_size":     11,
     "chem_conditions_color":        "#1A1A1A",
     "chem_conditions_offset":        6.0,        # vertical offset above/below arrow
+    "chem_reaction_reversible_gap":  5.0,        # V2/R2: px between forward/backward half-arrows
     # Functional group callouts
     "chem_fg_label_font_size":       10,
     "chem_fg_label_color":          "#37474F",
@@ -272,6 +273,29 @@ def _arrow(
     return [line, head]
 
 
+def _reversible_arrow(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    style: dict,
+) -> list:
+    """Return svg elements for a reversible reaction: → on top, ← on bottom.
+
+    The two half-arrows are displaced vertically by
+    ``chem_reaction_reversible_gap`` (split evenly above/below the midline)
+    so they read as a paired equilibrium symbol without overlapping.
+
+    V2 / R2.
+    """
+    half = float(style.get("chem_reaction_reversible_gap", 5.0)) / 2.0
+    x0, y0 = start
+    x1, y1 = end
+    # Forward (→): shifted up
+    fwd = _arrow((x0, y0 - half), (x1, y1 - half), style)
+    # Backward (←): shifted down, direction reversed
+    bwd = _arrow((x1, y1 + half), (x0, y0 + half), style)
+    return fwd + bwd
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -322,6 +346,9 @@ def render_reaction(
     conditions: dict | None = None,
     style_dict: dict | None = None,
     molecule_size: tuple[int, int] = (140, 100),
+    reversible: bool = False,
+    stack: bool = False,
+    stacked_row_gap: float = 24.0,
 ) -> svgwrite.container.Group:
     """Render a full reaction scheme: reactants + arrow (+ conditions) + products.
 
@@ -333,6 +360,12 @@ def render_reaction(
         style_dict: Optional preset overlay; merged onto DEFAULT_STYLE.
         molecule_size: Per-molecule bbox in pixels. Fixed (not auto-bbox) so
             arrow alignment is predictable.
+        reversible: When True, draws a paired forward/backward equilibrium
+            arrow instead of a single forward arrow (V2/R2).
+        stack: When True, places the reactant block on row 1 and the
+            arrow + product block on row 2 (V2/R1). Used when the horizontal
+            extent of the reaction exceeds the available canvas width.
+        stacked_row_gap: Vertical gap between molecule rows when stack=True.
 
     Returns:
         An svgwrite.container.Group containing the full reaction scheme,
@@ -355,6 +388,7 @@ def render_reaction(
     cond_size = int(style["chem_conditions_font_size"])
     cond_offset = float(style["chem_conditions_offset"])
     line_gap = cond_size * 1.3  # leading between wrapped lines
+    arrow_fn = _reversible_arrow if reversible else _arrow
 
     def _wrap(text: str, max_chars: int = 28) -> list[str]:
         """Split long condition strings at ', ' boundaries into ≤max_chars lines."""
@@ -383,36 +417,37 @@ def render_reaction(
     top_pad = (len(above_lines) * line_gap + cond_offset) if above_lines else 0.0
 
     group = svgwrite.container.Group()
-    mol_top = top_pad                 # y where molecules' top edge sits
-    midline_y = mol_top + mol_h / 2.0
 
-    def _place_block(smiles_list: list[str], cursor: float) -> float:
+    def _place_block_at(smiles_list: list[str], cursor: float, y_top: float) -> float:
+        """Place molecules in a horizontal block starting at (cursor, y_top).
+
+        Returns the cursor x-position after the last molecule.
+        """
+        y_mid = y_top + mol_h / 2.0
         for i, smi in enumerate(smiles_list):
             mol = _smiles_to_mol(smi)
             group.add(_inline_molecule(mol, (mol_w, mol_h), "skeletal", style,
-                                       translate=(cursor, mol_top)))
+                                       translate=(cursor, y_top)))
             cursor += mol_w
             if i < len(smiles_list) - 1:
                 cursor += gap
                 group.add(svgwrite.text.Text(
                     "+",
-                    insert=(cursor + plus_size * 0.3, midline_y + plus_size * 0.35),
+                    insert=(cursor + plus_size * 0.3, y_mid + plus_size * 0.35),
                     font_size=plus_size, fill=plus_color,
                     font_family=str(style["label_font_family"]),
                 ))
                 cursor += plus_size + gap
         return cursor
 
-    cursor = _place_block(reactants_smiles, 0.0) + gap
-    arrow_start = (cursor, midline_y)
-    arrow_end = (cursor + arrow_len, midline_y)
-    for elem in _arrow(arrow_start, arrow_end, style):
-        group.add(elem)
+    def _render_conditions_at(
+        arrow_mid_x: float, y_mol_top: float,
+    ) -> None:
+        """Render above/below condition text centred on arrow_mid_x."""
+        if not conditions:
+            return
 
-    if conditions:
-        arrow_mid_x = cursor + arrow_len / 2.0
-
-        def _condition_text(text: str, y: float) -> svgwrite.text.Text:
+        def _ctext(text: str, y: float) -> svgwrite.text.Text:
             return svgwrite.text.Text(
                 text,
                 insert=(arrow_mid_x, y),
@@ -422,21 +457,43 @@ def render_reaction(
             )
 
         if above_lines:
-            # Lines stack above mol_top; bottom line (closest) has baseline at
-            # mol_top - cond_offset.  Earlier lines step up by line_gap each.
             n = len(above_lines)
             for i, line in enumerate(above_lines):
-                y = mol_top - cond_offset - line_gap * (n - 1 - i)
-                group.add(_condition_text(line, y))
+                y = y_mol_top - cond_offset - line_gap * (n - 1 - i)
+                group.add(_ctext(line, y))
         if conditions.get("below"):
-            # First line sits just below the molecule bottom.
-            group.add(_condition_text(
+            group.add(_ctext(
                 str(conditions["below"]),
-                mol_top + mol_h + cond_offset + cond_size,
+                y_mol_top + mol_h + cond_offset + cond_size,
             ))
 
-    cursor += arrow_len + gap
-    _place_block(products_smiles, cursor)
+    if not stack:
+        # ---- Original horizontal layout ----
+        mol_top = top_pad
+        midline_y = mol_top + mol_h / 2.0
+        cursor = _place_block_at(reactants_smiles, 0.0, mol_top) + gap
+        arrow_start = (cursor, midline_y)
+        arrow_end = (cursor + arrow_len, midline_y)
+        for elem in arrow_fn(arrow_start, arrow_end, style):
+            group.add(elem)
+        _render_conditions_at(cursor + arrow_len / 2.0, mol_top)
+        cursor += arrow_len + gap
+        _place_block_at(products_smiles, cursor, mol_top)
+    else:
+        # ---- Stacked layout: reactants row 1, arrow + products row 2 ----
+        # Row 1: reactants (top padding applies here if conditions are above row 1)
+        mol_top_1 = top_pad
+        _place_block_at(reactants_smiles, 0.0, mol_top_1)
+        # Row 2: arrow at left, products to the right
+        mol_top_2 = mol_top_1 + mol_h + stacked_row_gap
+        midline_y_2 = mol_top_2 + mol_h / 2.0
+        arrow_start_2 = (0.0, midline_y_2)
+        arrow_end_2 = (arrow_len, midline_y_2)
+        for elem in arrow_fn(arrow_start_2, arrow_end_2, style):
+            group.add(elem)
+        _render_conditions_at(arrow_len / 2.0, mol_top_2)
+        _place_block_at(products_smiles, arrow_len + gap, mol_top_2)
+
     return group
 
 

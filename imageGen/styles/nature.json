@@ -42,5 +42,20 @@
     "chem_atom_S": "#DDCC77",
     "chem_bond_stroke": "#0E1A2B",
     "chem_bond_stroke_width": 2.5
+  },
+  "layout_overrides": {
+    "pathway_band_fill":          "#EFF2F5",
+    "pathway_band_stroke":        "#8EA3AF",
+    "pathway_band_stroke_width":  0.75,
+    "pathway_band_label_color":   "#0E1A2B",
+    "pathway_band_label_size":    12,
+    "pathway_band_label_family":  "Helvetica, Arial, sans-serif",
+    "panel_border_stroke":        "#5C7A8A",
+    "panel_border_stroke_width":  1.0,
+    "panel_border_fill":          "none",
+    "panel_title_color":          "#0E1A2B",
+    "panel_title_size":           13,
+    "panel_title_family":         "Helvetica, Arial, sans-serif",
+    "panel_title_weight":         "bold"
   }
 }
