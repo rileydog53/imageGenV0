@@ -21,6 +21,8 @@ from imageGen.layout.pathway_layout import (
     _midpoint_of_path,
     _phosphorylation_arrow,
     _relation_glyph,
+    _route_same_band_arrows,
+    _segment_hits_rect,
     compute_pathway_canvas,
     layout_pathway,
 )
@@ -653,3 +655,123 @@ def test_phosphorylation_arrow_end_to_end_in_layout():
     assert len(arrow_entries) == 1
     g = arrow_entries[0].primitive(*arrow_entries[0].args, **arrow_entries[0].kwargs)
     assert ">P<" in g.tostring()
+
+
+# ---------------------------------------------------------------------------
+# V2 / L1: same-band straight vs. arch routing
+# ---------------------------------------------------------------------------
+
+def test_segment_hits_rect_through_center():
+    # Horizontal segment passing straight through a centred rect.
+    assert _segment_hits_rect((0.0, 0.0), (100.0, 0.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_clears_above():
+    # Same span but well above the rect → no hit.
+    assert not _segment_hits_rect((0.0, -50.0), (100.0, -50.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_stops_short():
+    # Segment ends before reaching the rect → no hit.
+    assert not _segment_hits_rect((0.0, 0.0), (20.0, 0.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_vertical():
+    assert _segment_hits_rect((50.0, -50.0), (50.0, 50.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_parallel_miss():
+    # Collinear-with-edge but offset segment never enters the rect.
+    assert not _segment_hits_rect((0.0, 100.0), (100.0, 100.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def _arrows_by_relation(fig, entries):
+    """Map (source, target) → arrow LayoutEntry, in figure order."""
+    return {
+        (r.source, r.target): e
+        for r, e in zip(fig.relations, _arrow_entries(entries))
+    }
+
+
+def test_same_band_adjacent_arrow_is_straight():
+    """An arrow between two same-band entities with nothing between them is a
+    straight line — no elbow waypoints."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="b", type=EntityType.PROTEIN, label="B"),
+        ],
+        relations=[Relation(source="a", target="b", type=RelationType.ACTIVATES)],
+    )
+    entries = layout_pathway(fig)
+    arrow = _arrows_by_relation(fig, entries)[("a", "b")]
+    assert arrow.kwargs.get("waypoints") is None
+
+
+def test_same_band_skip_arrow_arches():
+    """A skip arrow (A→C over an intervening B) routes as a 4-point arch."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="b", type=EntityType.PROTEIN, label="B"),
+            Entity(id="c", type=EntityType.PROTEIN, label="C"),
+        ],
+        relations=[
+            Relation(source="a", target="b", type=RelationType.ACTIVATES),
+            Relation(source="b", target="c", type=RelationType.ACTIVATES),
+            Relation(source="a", target="c", type=RelationType.ACTIVATES),
+        ],
+    )
+    entries = layout_pathway(fig)
+    by_rel = _arrows_by_relation(fig, entries)
+    # Adjacent links stay straight; the skip link arches.
+    assert by_rel[("a", "b")].kwargs.get("waypoints") is None
+    assert by_rel[("b", "c")].kwargs.get("waypoints") is None
+    skip = by_rel[("a", "c")].kwargs.get("waypoints")
+    assert skip is not None and len(skip) == 4
+
+
+def test_overlapping_arches_get_distinct_lanes():
+    """Two skip arrows sharing a source (A→C and A→D) must not collapse onto
+    the same corridor — their horizontal legs sit at different y."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="b", type=EntityType.PROTEIN, label="B"),
+            Entity(id="c", type=EntityType.PROTEIN, label="C"),
+            Entity(id="d", type=EntityType.PROTEIN, label="D"),
+        ],
+        relations=[
+            Relation(source="a", target="b", type=RelationType.ACTIVATES),
+            Relation(source="b", target="c", type=RelationType.ACTIVATES),
+            Relation(source="c", target="d", type=RelationType.ACTIVATES),
+            Relation(source="a", target="c", type=RelationType.ACTIVATES),
+            Relation(source="a", target="d", type=RelationType.ACTIVATES),
+        ],
+    )
+    entries = layout_pathway(fig)
+    by_rel = _arrows_by_relation(fig, entries)
+    ac = by_rel[("a", "c")].kwargs["waypoints"]
+    ad = by_rel[("a", "d")].kwargs["waypoints"]
+    # corridor y is the second waypoint's y; the two arches must differ.
+    assert ac[1][1] != ad[1][1]
+
+
+def test_cross_band_arrow_still_uses_corridor():
+    """Cross-band arrows keep the inter-band elbow routing (4 waypoints)."""
+    fig = load_fixture("multi_compartment_translocation.json")
+    entries = layout_pathway(fig)
+    fig_relations = fig.relations
+    # Find a relation whose endpoints live in different compartments.
+    loc = {e.id: e.location for e in fig.entities}
+    cross = [
+        e for r, e in zip(fig_relations, _arrow_entries(entries))
+        if loc[r.source] != loc[r.target]
+    ]
+    assert cross, "fixture should contain a cross-compartment relation"
+    for e in cross:
+        wps = e.kwargs.get("waypoints")
+        assert wps is not None and len(wps) == 4

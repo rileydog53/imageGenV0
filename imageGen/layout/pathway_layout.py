@@ -106,6 +106,14 @@ PATHWAY_DEFAULT_PARAMS: dict[str, Any] = {
     # SVG canvas boundary. Centers are clamped after even-spacing so entities
     # near the canvas perimeter never render partially outside the viewport.
     "pathway_edge_margin":       8.0,
+    # V2 / L1: same-band arrow routing. Adjacent same-band entities get a
+    # straight arrow; a "skip" arrow whose straight shaft would cross an
+    # intervening entity arches over (or under) the row instead. Overlapping
+    # arches are stacked into distinct lanes so their corridors never collapse
+    # onto one another. `arch_clearance` is the gap between the entity row and
+    # the first lane; `arch_lane_gap` is the spacing between successive lanes.
+    "pathway_arch_clearance":    12.0,
+    "pathway_arch_lane_gap":     14.0,
 }
 
 
@@ -524,6 +532,174 @@ def _arrow_endpoints(
     return start, end
 
 
+def _segment_hits_rect(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    cx: float,
+    cy: float,
+    hw: float,
+    hh: float,
+) -> bool:
+    """True if segment p0→p1 intersects the axis-aligned rect centred at
+    (cx, cy) with half-extents (hw, hh). Liang–Barsky slab clipping."""
+    x0, y0 = p0
+    x1, y1 = p1
+    dx, dy = x1 - x0, y1 - y0
+    left, right = cx - hw, cx + hw
+    bottom, top = cy - hh, cy + hh
+    t_enter, t_exit = 0.0, 1.0
+    for p, q in (
+        (-dx, x0 - left),    # left slab
+        (dx, right - x0),    # right slab
+        (-dy, y0 - bottom),  # bottom slab
+        (dy, top - y0),      # top slab
+    ):
+        if p == 0:
+            # Segment parallel to this slab: outside if origin is outside.
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            if t > t_exit:
+                return False
+            if t > t_enter:
+                t_enter = t
+        else:
+            if t < t_enter:
+                return False
+            if t < t_exit:
+                t_exit = t
+    return t_enter <= t_exit
+
+
+def _arch_waypoints(
+    src_center: tuple[float, float],
+    src_bbox: tuple[float, float],
+    tgt_center: tuple[float, float],
+    tgt_bbox: tuple[float, float],
+    band: tuple[float, float],
+    gap: float,
+    lane: int,
+    *,
+    above: bool,
+    clearance: float,
+    lane_gap: float,
+) -> list[tuple[float, float]]:
+    """4-point elbow that arches a same-band skip arrow over (or under) the
+    intervening entities. `lane` (0-based) stacks successive arches into
+    distinct corridors so overlapping arches never share a shaft line. The
+    corridor is clamped to stay inside the band interior."""
+    sx, sy = src_center
+    tx, ty = tgt_center
+    shh = src_bbox[1] / 2
+    thh = tgt_bbox[1] / 2
+    band_top, band_bottom = band
+    if above:
+        base = min(sy - shh, ty - thh) - clearance
+        corridor_y = base - lane * lane_gap
+        corridor_y = max(corridor_y, band_top + clearance)
+        tail = (sx, sy - shh - gap)
+        head = (tx, ty - thh - gap)
+    else:
+        base = max(sy + shh, ty + thh) + clearance
+        corridor_y = base + lane * lane_gap
+        corridor_y = min(corridor_y, band_bottom - clearance)
+        tail = (sx, sy + shh + gap)
+        head = (tx, ty + thh + gap)
+    return [tail, (sx, corridor_y), (tx, corridor_y), head]
+
+
+def _route_same_band_arrows(
+    relations: list,
+    positions: dict[str, tuple[float, float]],
+    entity_by_id: dict,
+    bands: dict[str, tuple[float, float]],
+    location_map: dict[str, str],
+    effective_bbox: dict,
+    gap: float,
+    clearance: float,
+    lane_gap: float,
+) -> dict[int, list[tuple[float, float]] | None]:
+    """Decide waypoints for every same-band relation.
+
+    Returns a map from `relations` index → waypoint list, or ``None`` for a
+    straight arrow. An arrow arches when its straight shaft would cross an
+    intervening entity in the same band; arches are assigned to lanes via a
+    left-edge sweep so overlapping spans never collapse onto one corridor,
+    alternating above/below the row to use both sides of the band.
+    """
+    # Entities grouped per band, for the intervening-entity test.
+    band_members: dict[str, list[str]] = {}
+    for eid in positions:
+        band_members.setdefault(location_map[eid], []).append(eid)
+
+    routes: dict[int, list[tuple[float, float]] | None] = {}
+    arching: list[tuple[float, float, int]] = []  # (x_left, x_right, rel_index)
+
+    for idx, r in enumerate(relations):
+        if location_map[r.source] != location_map[r.target]:
+            continue  # cross-band handled elsewhere
+        src = entity_by_id[r.source]
+        tgt = entity_by_id[r.target]
+        s_center = positions[r.source]
+        t_center = positions[r.target]
+        s_bbox = effective_bbox[src.type]
+        t_bbox = effective_bbox[tgt.type]
+        start, end = _arrow_endpoints(s_center, s_bbox, t_center, t_bbox, gap)
+
+        hit = False
+        for oid in band_members[location_map[r.source]]:
+            if oid in (r.source, r.target):
+                continue
+            ocx, ocy = positions[oid]
+            ow, oh = effective_bbox[entity_by_id[oid].type]
+            if _segment_hits_rect(start, end, ocx, ocy, ow / 2, oh / 2):
+                hit = True
+                break
+
+        if not hit:
+            routes[idx] = None  # straight
+        else:
+            arching.append((min(s_center[0], t_center[0]),
+                            max(s_center[0], t_center[0]), idx))
+
+    # Left-edge lane assignment: sort by left x, place each span in the
+    # lowest lane whose last span ends before this one starts.
+    arching.sort(key=lambda s: (s[0], s[1]))
+    lane_right_edge: list[float] = []  # rightmost x occupied per lane
+    lane_of: dict[int, int] = {}
+    for x_left, x_right, idx in arching:
+        placed = False
+        for lane, redge in enumerate(lane_right_edge):
+            if x_left >= redge:
+                lane_right_edge[lane] = x_right
+                lane_of[idx] = lane
+                placed = True
+                break
+        if not placed:
+            lane_of[idx] = len(lane_right_edge)
+            lane_right_edge.append(x_right)
+
+    for x_left, x_right, idx in arching:
+        r = relations[idx]
+        src = entity_by_id[r.source]
+        tgt = entity_by_id[r.target]
+        lane = lane_of[idx]
+        # Alternate sides: even lanes arch above, odd lanes arch below, so a
+        # band uses both halves and fits roughly twice as many arches.
+        side_lane = lane // 2
+        above = (lane % 2 == 0)
+        routes[idx] = _arch_waypoints(
+            positions[r.source], effective_bbox[src.type],
+            positions[r.target], effective_bbox[tgt.type],
+            bands[location_map[r.source]],
+            gap, side_lane,
+            above=above, clearance=clearance, lane_gap=lane_gap,
+        )
+    return routes
+
+
 def _orthogonal_waypoints(
     src_center: tuple[float, float],
     src_bbox: tuple[float, float],
@@ -852,7 +1028,18 @@ def layout_pathway(
             ir_id=e.id,
         ))
 
-    for r in figure.relations:
+    # V2 / L1: same-band arrows route straight when clear, or arch over an
+    # intervening entity in a distinct lane when not. Cross-band arrows keep
+    # the inter-band corridor routing. Same-band routes are decided together
+    # so overlapping arches can be assigned separate lanes.
+    same_band_routes = _route_same_band_arrows(
+        figure.relations, positions, entity_by_id, bands, location_map,
+        effective_bbox, arrow_gap,
+        clearance=float(params["pathway_arch_clearance"]),
+        lane_gap=float(params["pathway_arch_lane_gap"]),
+    )
+
+    for idx, r in enumerate(figure.relations):
         src = entity_by_id[r.source]
         tgt = entity_by_id[r.target]
         start, end = _arrow_endpoints(
@@ -860,11 +1047,14 @@ def layout_pathway(
             positions[r.target], effective_bbox[tgt.type],
             arrow_gap,
         )
-        wps = _orthogonal_waypoints(
-            positions[r.source], effective_bbox[src.type], bands[location_map[r.source]],
-            positions[r.target], effective_bbox[tgt.type], bands[location_map[r.target]],
-            arrow_gap,
-        )
+        if location_map[r.source] != location_map[r.target]:
+            wps = _orthogonal_waypoints(
+                positions[r.source], effective_bbox[src.type], bands[location_map[r.source]],
+                positions[r.target], effective_bbox[tgt.type], bands[location_map[r.target]],
+                arrow_gap,
+            )
+        else:
+            wps = same_band_routes.get(idx)  # None → straight arrow
         arrow_kwargs: dict = {**style_kwargs, "waypoints": wps}
         entries.append(_entry(
             RELATION_TO_ARROW[r.type],

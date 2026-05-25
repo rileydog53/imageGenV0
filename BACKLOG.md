@@ -39,7 +39,7 @@ All v1 cleanup items resolved. Kept for reference:
 
 | # | Item | Source | Priority |
 |---|---|---|---|
-| L1 | Force-directed arrow routing (crossing detection, curve-around heuristics). v1 drew all pathway arrows as straight bbox-to-bbox lines. | `pathway_layout.py:32`; ROADMAP §Stretch | **Medium** |
+| L1 | ~~Force-directed arrow routing (crossing detection, curve-around heuristics). v1 drew all pathway arrows as straight bbox-to-bbox lines.~~ **Done** — same-band arrows now route straight when the shaft is clear and arch over/under an intervening entity when not (`_segment_hits_rect` collision test + `_route_same_band_arrows`). Overlapping arches are assigned distinct lanes via a left-edge sweep, alternating above/below the row so corridors never collapse onto one another. Cross-band corridor routing unchanged. Used deterministic geometric routing rather than a physics sim — same goal (no crossings), but testable and reproducible. 9 new tests, 6 goldens regenerated. **Density ceiling:** >~4 mutually-overlapping skip edges in a single short band clamp into shared lanes (graceful, no clipping); growing the band to fit is a possible follow-up. | `pathway_layout.py:32`; ROADMAP §Stretch | ~~Medium~~ |
 | L2 | Force-directed label placement for dense pathways. v1 was greedy with priority-ordered candidates; raises `LabelPlacementError` when boxed in. V2 could shrink font, add leader lines, or fall back gracefully. | `label_placement.py:25`; ROADMAP §Stretch | **Medium** |
 | L3 | ~~Vertical sub-stacking inside a compartment band when entity count overflows canvas width.~~ **Done** — `_compute_band_heights` replaces equal-split with per-band row-aware sizing (`_BAND_BASELINE` + `_LABEL_MARGIN` constants); `compute_pathway_canvas` unified in `pathway_layout.py` and thinly delegated from compositor; 5 new tests added. | `you-re-working-as-the-giggly-cocke.md` §Out of scope | ~~Medium~~ |
 | L4 | ~~Per-arrow annotation glyphs (e.g. a "P" badge on phosphorylation arrows). v1 routes `PHOSPHORYLATES` to `activation_arrow` with no decoration; V2 can add relation-specific visual marks.~~ **Done** — `_phosphorylation_arrow` wraps `activation_arrow` and overlays a circular "P" badge via `_relation_glyph`; `_PHOSPHO_BADGE_DEFAULTS` style keys respond to journal presets; `RELATION_TO_ARROW[PHOSPHORYLATES]` updated; 7 new tests added. | `pathway_layout.py:23-27`; TODO.txt §pathway | ~~Medium~~ |
@@ -121,7 +121,9 @@ Long-horizon items from `ROADMAP.md` §Stretch Goals and the master plan. These 
 
 **Wave 6 complete.** All medium-priority rendering bugs resolved (L15, L16, L17, L18, L19).
 
-**Next:** **L1** (full force-directed arrow routing) or **L2** (force-directed label placement) — both Medium, open-ended algorithm work.
+**L1 complete** (2026-05-25) — same-band straight/arch routing with lane separation. 520 tests pass.
+
+**Next:** **L2** (force-directed / graceful-fallback label placement for dense pathways) — last remaining Medium item.
 
 **Remaining Medium-priority items after bugs:** L1 (full force-directed routing), L2 (force-directed label placement), L13 (arrow collision in label placement), R3 (multi-step routing), R5 (per-arrow conditions).
 
