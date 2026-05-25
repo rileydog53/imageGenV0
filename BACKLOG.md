@@ -65,7 +65,7 @@ All v1 cleanup items resolved. Kept for reference:
 |---|---|---|---|
 | R1 | ~~Vertical stacking when reactant/product count would overflow panel width. v1 lays everything out horizontally; V2 can add column wrapping.~~ **Done** — `_should_stack` computes total flat width; `layout_reaction` forwards `stack=True` + `stacked_row_gap` when width exceeds `reaction_max_width`; `render_reaction` gains `stack` parameter placing reactants on row 1 and arrow+products on row 2; 6 new tests added. | `reaction_layout.py:25-28` | ~~Medium~~ |
 | R2 | ~~`ReactionConditions.reversible` is silently ignored — chemistry's arrow primitive only draws single-direction.~~ **Done** — `_reversible_arrow` draws forward (↑) + backward (↓) half-arrows; `render_reaction` gains `reversible` parameter; `_is_reversible(figure)` detects the flag in any relation's conditions; `layout_reaction` forwards `reversible=True` when set; `chem_reaction_reversible_gap` added to `DEFAULT_STYLE`; 5+5 new tests added. | `reaction_layout.py:29-31` | ~~Medium~~ |
-| R3 | Multi-step reactions (an entity that is both source and target of different relations — an intermediate) raise `NotImplementedError`. V2: route to `pathway_layout.py` (official answer). | `reaction_layout.py:32-34` | **Low** |
+| R3 | ~~Multi-step reactions (an entity that is both source and target of different relations — an intermediate) raise `NotImplementedError`. V2: route to `pathway_layout.py` (official answer).~~ **Done** — `compositor._is_multistep_reaction` detects an intermediate (source∩target ≠ ∅) in a REACTION_SCHEME and `render_figure` coerces the archetype to PATHWAY before dispatch, routing layout, label-request selection, and canvas sizing through the pathway path in one decision (no SMILES needed — molecules render as labelled boxes). `layout_reaction` keeps its fail-loud direct-call contract. 3 new tests added. | `reaction_layout.py:32-34`; `compositor.py::render_figure` | ~~Low~~ |
 | R4 | ~~Per-molecule annotations / compound numbers. V2 `reaction_layout` can decompose into per-molecule `LayoutEntry` items, paired with `label_placement`.~~ **Done** — `_molecule_centers` replicates `render_reaction` cursor geometry to compute each molecule's (cx, cy); `reaction_label_requests(fig, entries)` emits one `LabelRequest` per entity with `priority=("below", ...)` and `ir_id=entity.id`; compositor `_label_requests_fn` now returns it for REACTION_SCHEME; 7 new tests added. | `reaction_layout.py:35-37, 165` | ~~Medium~~ |
 | R5 | Per-arrow conditions in multi-step reactions (different conditions per arrow). v1 uses the first relation's conditions; V2 can honor each arrow's conditions independently. | `reaction_layout.py:109` | **Low** |
 
@@ -125,9 +125,11 @@ Long-horizon items from `ROADMAP.md` §Stretch Goals and the master plan. These 
 
 **L2 complete** (2026-05-25) — graceful relax-and-retry label fallback ladder (shrink → nudge → flagged overlap), `strict_labels` kwarg + `--strict-labels` CLI flag. All Medium-priority items are now done.
 
-**Next:** No Medium items remain. Pick from the **Low** tier (e.g. L5, L6, L7, L13, R3, R5, ST1/ST3/ST4) or revisit Section 3 Stretch goals.
+**R3 complete** (2026-05-25) — multi-step reactions (intermediate entity) now route through `layout_pathway` via an archetype-coercion decision in `compositor.render_figure`; `layout_reaction` still raises on direct calls. 523 tests pass.
 
-**Remaining priority items:** Lows only — L5–L7, L10–L14, R3, R5, P1/P2, ST1/ST3/ST4.
+**Next:** No Medium items remain. Pick from the **Low** tier (e.g. L5, L6, L7, L13, R5, ST1/ST3/ST4) or revisit Section 3 Stretch goals.
+
+**Remaining priority items:** Lows only — L5–L7, L10–L14, R5, P1/P2, ST1/ST3/ST4.
 
 **Test suite state:** 511 tests, 0 failures. Run `~/Desktop/.venv/bin/python -m pytest -q` to verify.
 

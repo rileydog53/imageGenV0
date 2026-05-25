@@ -13,8 +13,16 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from imageGen.ir.schema import Archetype, Figure
+from imageGen.ir.schema import (
+    Archetype,
+    Entity,
+    EntityType,
+    Figure,
+    Relation,
+    RelationType,
+)
 from imageGen.render.compositor import (
+    _is_multistep_reaction,
     _needs_watermark,
     _resolve_format,
     _resolve_style,
@@ -277,6 +285,64 @@ def test_golden_svg_oxidation_reaction(tmp_path):
     png_path = FIGURES_DIR / "compositor_oxidation_reaction.png"
     png_path.write_bytes(cairosvg.svg2png(url=str(out)))
     assert png_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Multi-step reaction routing (R3): A→B→C is rendered as a pathway, not a
+# single reactant→product reaction row.
+# ---------------------------------------------------------------------------
+
+
+def _multistep_reaction(n_steps: int = 2) -> Figure:
+    """A REACTION_SCHEME chain e0→e1→…→e{n} (every middle entity an intermediate)."""
+    entities = [
+        Entity(id=f"e{i}", type=EntityType.METABOLITE, label=f"M{i}")
+        for i in range(n_steps + 1)
+    ]
+    relations = [
+        Relation(source=f"e{i}", target=f"e{i + 1}", type=RelationType.GENERIC)
+        for i in range(n_steps)
+    ]
+    return Figure(
+        archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations
+    )
+
+
+def test_is_multistep_reaction_predicate():
+    """The predicate is True only for a REACTION_SCHEME with an intermediate."""
+    assert _is_multistep_reaction(_multistep_reaction(2)) is True
+    # Single-step: distinct source and target sets, no intermediate.
+    single = Figure(
+        archetype=Archetype.REACTION_SCHEME,
+        entities=[
+            Entity(id="a", type=EntityType.METABOLITE, label="A"),
+            Entity(id="p", type=EntityType.METABOLITE, label="P"),
+        ],
+        relations=[Relation(source="a", target="p", type=RelationType.GENERIC)],
+    )
+    assert _is_multistep_reaction(single) is False
+    # A genuine pathway is never treated as a multi-step reaction.
+    assert _is_multistep_reaction(load_fixture(MAPK)) is False
+
+
+def test_multistep_reaction_renders_without_smiles_map(tmp_path):
+    """R3: a multi-step reaction routes to the pathway engine, which needs no
+    SMILES — so omitting smiles_map must not raise (unlike a single-step scheme)."""
+    ir = _multistep_reaction(2)
+    out = render_figure(ir, tmp_path / "fig.svg")  # no smiles_map
+    assert out.exists()
+    ET.parse(str(out))  # well-formed SVG
+
+
+def test_multistep_reaction_uses_pathway_path_not_reaction(tmp_path):
+    """The chain renders per-entity boxes (pathway) — every entity id is tagged
+    and the single composite `reaction_0` group is absent."""
+    ir = _multistep_reaction(2)
+    out = render_figure(ir, tmp_path / "fig.svg")
+    tagged = _svg_elements_with_attr(out, "data-ir-id")
+    for e in ir.entities:
+        assert e.id in tagged, f"entity {e.id!r} not tagged — did not route to pathway"
+    assert "reaction_0" not in tagged, "reaction_0 present — routed to layout_reaction"
 
 
 # ---------------------------------------------------------------------------

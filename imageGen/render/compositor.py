@@ -135,6 +135,13 @@ def render_figure(
     output_path = Path(output_path)
     fmt = _resolve_format(output_path, format)
     style_dict = _resolve_style(ir, style_name)
+    # R3: a multi-step reaction (one entity is both source and target) can't be
+    # drawn as a single reactant→product row, so treat it as a PATHWAY for the
+    # rest of the render. Coercing the archetype here routes every downstream
+    # consumer that keys off it -- layout dispatch, label-request selection, and
+    # canvas sizing -- through the pathway path in one decision.
+    if _is_multistep_reaction(ir):
+        ir = ir.model_copy(update={"archetype": Archetype.PATHWAY})
     entries = _dispatch_layout(ir, style_dict, smiles_map)
 
     # L18: compute canvas before label placement so the bounds can be forwarded
@@ -196,6 +203,23 @@ def _resolve_format(
             "pass format= explicitly or use .svg / .png / .pdf"
         )
     return suffix  # type: ignore[return-value]
+
+
+def _is_multistep_reaction(ir: Figure) -> bool:
+    """True when *ir* is a REACTION_SCHEME with an intermediate entity.
+
+    An intermediate is an entity that is both the source of one relation and
+    the target of another -- i.e. a multi-step reaction (A→B→C). `layout_reaction`
+    raises NotImplementedError on these because a single-row reactant→product
+    layout can't express a chain; the official answer (BACKLOG R3) is to render
+    them as a pathway. The routing decision lives here at dispatch time;
+    `layout_reaction` keeps its fail-loud contract when called directly.
+    """
+    if ir.archetype != Archetype.REACTION_SCHEME:
+        return False
+    sources = {r.source for r in ir.relations}
+    targets = {r.target for r in ir.relations}
+    return bool(sources & targets)
 
 
 def _dispatch_layout(

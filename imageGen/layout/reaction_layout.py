@@ -30,8 +30,10 @@ v1 limitations (explicit gaps; not oversights):
     arrow primitive draws single-direction only. Honor this once
     chemistry exposes a reversible-arrow option.
   - Multi-step reactions (an entity that is both source and target of
-    different relations -- an intermediate) raise NotImplementedError.
-    Multi-step belongs in pathway_layout.py.
+    different relations -- an intermediate) raise NotImplementedError
+    when this engine is called directly. The compositor (R3) detects
+    them up front and routes the figure through pathway_layout instead,
+    so end-to-end rendering of a chain (A→B→C) succeeds as a pathway.
   - Per-molecule annotations / compound numbers are deferred to
     label_placement.py paired with a v2 of this engine that decomposes
     into per-molecule LayoutEntry items.
@@ -82,7 +84,8 @@ def _classify_entities(figure: Figure) -> tuple[list[str], list[str]]:
     Reactant = entity that is the source of any relation.
     Product = entity that is the target of any relation.
     Intermediates (both source and target -- multi-step reactions) raise
-    NotImplementedError; those belong in pathway_layout.py.
+    NotImplementedError; the compositor routes such figures through
+    pathway_layout before this engine is reached (R3).
 
     Output preserves the entity declaration order from the IR: callers who
     care about left-to-right ordering of reactants in the rendered figure
