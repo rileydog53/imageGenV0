@@ -40,7 +40,7 @@ All v1 cleanup items resolved. Kept for reference:
 | # | Item | Source | Priority |
 |---|---|---|---|
 | L1 | ~~Force-directed arrow routing (crossing detection, curve-around heuristics). v1 drew all pathway arrows as straight bbox-to-bbox lines.~~ **Done** — same-band arrows now route straight when the shaft is clear and arch over/under an intervening entity when not (`_segment_hits_rect` collision test + `_route_same_band_arrows`). Overlapping arches are assigned distinct lanes via a left-edge sweep, alternating above/below the row so corridors never collapse onto one another. Cross-band corridor routing unchanged. Used deterministic geometric routing rather than a physics sim — same goal (no crossings), but testable and reproducible. 9 new tests, 6 goldens regenerated. **Density ceiling:** >~4 mutually-overlapping skip edges in a single short band clamp into shared lanes (graceful, no clipping); growing the band to fit is a possible follow-up. | `pathway_layout.py:32`; ROADMAP §Stretch | ~~Medium~~ |
-| L2 | Force-directed label placement for dense pathways. v1 was greedy with priority-ordered candidates; raises `LabelPlacementError` when boxed in. V2 could shrink font, add leader lines, or fall back gracefully. | `label_placement.py:25`; ROADMAP §Stretch | **Medium** |
+| L2 | ~~Force-directed label placement for dense pathways. v1 was greedy with priority-ordered candidates; raises `LabelPlacementError` when boxed in. V2 could shrink font, add leader lines, or fall back gracefully.~~ **Done** — replaced the fail-loud greedy pass with a relax-and-retry ladder (`_place_with_fallback`): full-size first-fit → 15%-smaller font (`_FONT_SHRINK_FACTOR`, ≥6pt floor) → small `_ANCHOR_NUDGES` → last-resort overlapping placement tagged `data-overlap="true"`. `place_labels` gains a `strict_labels` kwarg (default False emits overlap + `UserWarning`; True restores v1 fail-loud via `LabelPlacementError`), threaded through `compositor.render_figure`/`_place_labels_per_panel` and the `--strict-labels` CLI flag; `legibility_check` tolerates flagged overlaps. Chose graceful degradation over a physics sim — deterministic and testable. Dedicated `tests/test_label_placement_fallback.py`; 520 tests pass. | `label_placement.py:25`; ROADMAP §Stretch | ~~Medium~~ |
 | L3 | ~~Vertical sub-stacking inside a compartment band when entity count overflows canvas width.~~ **Done** — `_compute_band_heights` replaces equal-split with per-band row-aware sizing (`_BAND_BASELINE` + `_LABEL_MARGIN` constants); `compute_pathway_canvas` unified in `pathway_layout.py` and thinly delegated from compositor; 5 new tests added. | `you-re-working-as-the-giggly-cocke.md` §Out of scope | ~~Medium~~ |
 | L4 | ~~Per-arrow annotation glyphs (e.g. a "P" badge on phosphorylation arrows). v1 routes `PHOSPHORYLATES` to `activation_arrow` with no decoration; V2 can add relation-specific visual marks.~~ **Done** — `_phosphorylation_arrow` wraps `activation_arrow` and overlays a circular "P" badge via `_relation_glyph`; `_PHOSPHO_BADGE_DEFAULTS` style keys respond to journal presets; `RELATION_TO_ARROW[PHOSPHORYLATES]` updated; 7 new tests added. | `pathway_layout.py:23-27`; TODO.txt §pathway | ~~Medium~~ |
 | L5 | Per-entity sublabels / badges via `label_placement` (entity-anchored requests, not just relation-arrow midpoints). | `label_placement.py` plan; this-step plan §Out of Scope | **Low** |
@@ -115,7 +115,7 @@ Long-horizon items from `ROADMAP.md` §Stretch Goals and the master plan. These 
 
 ---
 
-## Session state for the next chat (as of 2026-05-23)
+## Session state for the next chat (as of 2026-05-25)
 
 **Waves completed:** 1 (P3, ST5), 2 (L9, ST2), 3 (L3, L8, L4), 4 (R1, R2, R4), 5 (L15, L18, L19), 6 (L17 confirmed done, L16 next).
 
@@ -123,9 +123,11 @@ Long-horizon items from `ROADMAP.md` §Stretch Goals and the master plan. These 
 
 **L1 complete** (2026-05-25) — same-band straight/arch routing with lane separation. 520 tests pass.
 
-**Next:** **L2** (force-directed / graceful-fallback label placement for dense pathways) — last remaining Medium item.
+**L2 complete** (2026-05-25) — graceful relax-and-retry label fallback ladder (shrink → nudge → flagged overlap), `strict_labels` kwarg + `--strict-labels` CLI flag. All Medium-priority items are now done.
 
-**Remaining Medium-priority items after bugs:** L1 (full force-directed routing), L2 (force-directed label placement), L13 (arrow collision in label placement), R3 (multi-step routing), R5 (per-arrow conditions).
+**Next:** No Medium items remain. Pick from the **Low** tier (e.g. L5, L6, L7, L13, R3, R5, ST1/ST3/ST4) or revisit Section 3 Stretch goals.
+
+**Remaining priority items:** Lows only — L5–L7, L10–L14, R3, R5, P1/P2, ST1/ST3/ST4.
 
 **Test suite state:** 511 tests, 0 failures. Run `~/Desktop/.venv/bin/python -m pytest -q` to verify.
 
