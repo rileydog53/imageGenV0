@@ -403,16 +403,31 @@ def _graph_positions(
     single row at the band center, byte-identical to the v1 placement.
     """
     G = nx.Graph()
+    DG = nx.DiGraph()
     for e in figure.entities:
         G.add_node(e.id)
+        DG.add_node(e.id)
     for r in figure.relations:
         G.add_edge(r.source, r.target)
+        DG.add_edge(r.source, r.target)
+
+    # For DAGs, seed spring_layout with topological-rank x positions so
+    # left-to-right order reflects the actual flow direction (A→B→C instead
+    # of a U-shape). Falls back to unconstrained spring when cycles exist.
+    init_pos: dict | None = None
+    if G.number_of_edges() and nx.is_directed_acyclic_graph(DG):
+        generations = list(nx.topological_generations(DG))
+        max_rank = max(len(generations) - 1, 1)
+        init_pos = {}
+        for rank, gen in enumerate(generations):
+            for node in gen:
+                init_pos[node] = (rank / max_rank, 0.0)
 
     # spring_layout is only meaningful when there are edges to relax; with no
     # relations the result is rotationally symmetric noise that gets discarded
     # by the even-spacing pass below. Skip it for an isolated-entity figure.
     raw = (
-        nx.spring_layout(G, seed=seed)
+        nx.spring_layout(G, seed=seed, pos=init_pos)
         if G.number_of_edges()
         else {}
     )

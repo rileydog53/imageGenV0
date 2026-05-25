@@ -218,12 +218,16 @@ def test_layout_entries_are_executable():
 
 def test_layout_params_override_seed_and_canvas():
     fig = load_fixture("mapk_cascade.json")
-    a = layout_pathway(fig, layout_params={"pathway_seed": 1})
-    b = layout_pathway(fig, layout_params={"pathway_seed": 2})
-    a_pos = [e.args[1] for e in _entity_entries(a)]
-    b_pos = [e.args[1] for e in _entity_entries(b)]
-    # different seed → at least one entity ordering differs
-    assert a_pos != b_pos or len(fig.entities) <= 1
+    # MAPK is a strict linear DAG (Ras→Raf→MEK→ERK). With DAG-aware init
+    # (L16) the topological rank dominates spring relaxation, so entities land
+    # in left-to-right topological order regardless of seed.
+    entries = layout_pathway(fig, layout_params={"pathway_seed": 42})
+    ent_map = {e.ir_id: e.args[1][0] for e in _entity_entries(entries)}
+    assert ent_map["ras"] < ent_map["raf"] < ent_map["mek"] < ent_map["erk"]
+
+    # Seed parameter is still accepted (no error) with either value.
+    layout_pathway(fig, layout_params={"pathway_seed": 1})
+    layout_pathway(fig, layout_params={"pathway_seed": 2})
 
     big = layout_pathway(fig, layout_params={"pathway_canvas": (1600.0, 1200.0)})
     _, _, _, w, _ = _band_geom(_band_entries(big)[0])
