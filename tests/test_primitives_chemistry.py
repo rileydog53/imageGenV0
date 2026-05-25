@@ -21,6 +21,7 @@ from PIL import Image
 from imageGen.primitives.chemistry import (
     DEFAULT_STYLE,
     _FUNCTIONAL_GROUPS,
+    _reversible_arrow,
     render_functional_group,
     render_molecule,
     render_reaction,
@@ -204,3 +205,98 @@ def test_chemistry_renders_to_png():
     for name in ("carboxyl", "amine", "phosphate"):
         render_group_to_png(render_functional_group(name),
                        f"chemistry_fg_{name}.png", canvas=(200, 180))
+
+
+# ---------------------------------------------------------------------------
+# V2 / R2: reversible arrow
+# ---------------------------------------------------------------------------
+
+def test_reversible_arrow_returns_four_elements():
+    """_reversible_arrow returns two _arrow results (2 elements each) = 4 total."""
+    style = {**DEFAULT_STYLE}
+    elems = _reversible_arrow((0.0, 50.0), (100.0, 50.0), style)
+    assert len(elems) == 4  # forward line + head, backward line + head
+
+
+def test_reversible_arrow_elements_are_svg():
+    """All elements returned by _reversible_arrow must be svgwrite-renderable."""
+    style = {**DEFAULT_STYLE}
+    for elem in _reversible_arrow((0.0, 0.0), (80.0, 0.0), style):
+        assert hasattr(elem, "tostring")
+
+
+def test_render_reaction_reversible_flag_returns_group():
+    """render_reaction(reversible=True) must not raise and must return a Group."""
+    g = render_reaction(["CC(=O)O"], ["CCO"], reversible=True)
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_render_reaction_reversible_changes_output():
+    """SVG output must differ between reversible=True and False (extra arrow elements)."""
+    base = render_reaction(["CC"], ["CCO"]).tostring()
+    rev = render_reaction(["CC"], ["CCO"], reversible=True).tostring()
+    assert base != rev
+
+
+def test_reversible_gap_style_key_in_default_style():
+    """chem_reaction_reversible_gap must be present in DEFAULT_STYLE (V2/R2)."""
+    assert "chem_reaction_reversible_gap" in DEFAULT_STYLE
+
+
+# ---------------------------------------------------------------------------
+# V2 / R1: stacked layout
+# ---------------------------------------------------------------------------
+
+def test_render_reaction_stack_returns_group():
+    """render_reaction(stack=True) must return a Group without raising."""
+    g = render_reaction(["CC(=O)O"], ["CCO"], stack=True)
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_render_reaction_stack_changes_output():
+    """Stacked layout must differ from flat layout in SVG output."""
+    flat = render_reaction(["CC(=O)O"], ["CCO"]).tostring()
+    stacked = render_reaction(["CC(=O)O"], ["CCO"], stack=True).tostring()
+    assert flat != stacked
+
+
+def test_render_reaction_stack_with_conditions():
+    """Stacked layout + conditions must not raise (conditions render in row 2)."""
+    g = render_reaction(
+        ["CC(=O)O", "CCO"],
+        ["CCOC(C)=O"],
+        conditions={"above": "H2SO4", "below": "reflux"},
+        stack=True,
+    )
+    assert isinstance(g, svgwrite.container.Group)
+    assert g.tostring()  # non-empty SVG
+
+
+def test_render_reaction_stack_and_reversible_together():
+    """stack=True and reversible=True must compose without raising."""
+    g = render_reaction(["CC"], ["CCO"], reversible=True, stack=True)
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_render_reaction_stacked_to_png():
+    """Visual golden seed for the stacked layout."""
+    g = render_reaction(
+        ["CC(=O)O", "CCO", "c1ccccc1"],
+        ["CCOC(C)=O", "O"],
+        conditions={"above": "H2SO4 (cat.)", "below": "80°C"},
+        stack=True,
+    )
+    out = render_group_to_png(g, "chemistry_reaction_stacked.png", canvas=(600, 320))
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_reaction_reversible_to_png():
+    """Visual golden seed for the reversible arrow."""
+    g = render_reaction(
+        ["CC(=O)O"],
+        ["CCO"],
+        conditions={"above": "ΔG"},
+        reversible=True,
+    )
+    out = render_group_to_png(g, "chemistry_reaction_reversible.png", canvas=(600, 180))
+    assert out.exists() and out.stat().st_size > 0

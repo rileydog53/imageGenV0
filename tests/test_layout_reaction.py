@@ -10,8 +10,13 @@ from imageGen.ir.schema import (
     Relation, RelationType,
 )
 from imageGen.layout.reaction_layout import (
-    DEFAULT_LAYOUT_PARAMS,
+    REACTION_DEFAULT_PARAMS,
+    _block_width,
+    _is_reversible,
+    _molecule_centers,
+    _should_stack,
     layout_reaction,
+    reaction_label_requests,
 )
 from imageGen.layout.types import LayoutEntry
 from imageGen.primitives.chemistry import render_reaction
@@ -74,8 +79,8 @@ def test_layout_extracts_conditions():
 def test_layout_uses_default_position_and_molecule_size():
     fig = load_fixture("simple_reaction.json")
     entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
-    assert entries[0].position == DEFAULT_LAYOUT_PARAMS["reaction_origin"]
-    assert entries[0].kwargs["molecule_size"] == DEFAULT_LAYOUT_PARAMS["reaction_molecule_size"]
+    assert entries[0].position == REACTION_DEFAULT_PARAMS["reaction_origin"]
+    assert entries[0].kwargs["molecule_size"] == REACTION_DEFAULT_PARAMS["reaction_molecule_size"]
 
 
 def test_layout_overrides_layout_params():
@@ -207,3 +212,242 @@ def test_layout_renders_to_png():
     out = render_group_to_png(wrapped, "layout_reaction_esterification.png",
                               canvas=(800, 200))
     assert out.exists() and out.stat().st_size > 0
+
+
+# ---------------------------------------------------------------------------
+# V2 / R2: reversible arrows
+# ---------------------------------------------------------------------------
+
+def _make_reversible_reaction() -> Figure:
+    return Figure(
+        archetype=Archetype.REACTION_SCHEME,
+        entities=[
+            Entity(id="a", type=EntityType.METABOLITE, label="A"),
+            Entity(id="b", type=EntityType.METABOLITE, label="B"),
+        ],
+        relations=[
+            Relation(
+                source="a", target="b", type=RelationType.GENERIC,
+                conditions=ReactionConditions(reversible=True),
+            ),
+        ],
+    )
+
+
+def test_is_reversible_returns_true_for_reversible_conditions():
+    fig = _make_reversible_reaction()
+    assert _is_reversible(fig) is True
+
+
+def test_is_reversible_returns_false_without_conditions():
+    fig = _make_minimal_reaction()
+    assert _is_reversible(fig) is False
+
+
+def test_is_reversible_returns_false_when_reversible_not_set():
+    fig = _make_minimal_reaction(relations=[
+        Relation(
+            source="a", target="p", type=RelationType.GENERIC,
+            conditions=ReactionConditions(reagents=["KOH"], reversible=False),
+        ),
+    ])
+    assert _is_reversible(fig) is False
+
+
+def test_layout_reaction_sets_reversible_kwarg():
+    """When IR conditions.reversible=True, the LayoutEntry must carry reversible=True."""
+    fig = _make_reversible_reaction()
+    entries = layout_reaction(fig, smiles_map={"a": "CC", "b": "CCO"})
+    assert entries[0].kwargs.get("reversible") is True
+
+
+def test_layout_reaction_omits_reversible_kwarg_when_false():
+    """When reversible=False, layout_reaction must NOT add reversible to kwargs."""
+    fig = _make_minimal_reaction()
+    entries = layout_reaction(fig, smiles_map={"a": "CC", "p": "CCO"})
+    assert "reversible" not in entries[0].kwargs
+
+
+def test_reversible_entry_renders_without_error():
+    """Executing a reversible LayoutEntry must produce a valid Group."""
+    fig = _make_reversible_reaction()
+    entries = layout_reaction(fig, smiles_map={"a": "CC", "b": "CCO"})
+    g = entries[0].primitive(*entries[0].args, **entries[0].kwargs)
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_reaction_default_params_has_max_width():
+    """reaction_max_width must be in REACTION_DEFAULT_PARAMS (V2/R1 guard)."""
+    assert "reaction_max_width" in REACTION_DEFAULT_PARAMS
+    assert REACTION_DEFAULT_PARAMS["reaction_max_width"] > 0
+
+
+def test_simple_reaction_honors_reversible_from_fixture():
+    """simple_reaction.json has reversible=true — layout must forward it."""
+    fig = load_fixture("simple_reaction.json")
+    entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
+    assert entries[0].kwargs.get("reversible") is True
+
+
+# ---------------------------------------------------------------------------
+# V2 / R1: stacking helpers and layout decision
+# ---------------------------------------------------------------------------
+
+def test_block_width_single_mol():
+    assert _block_width(1, 140.0, 12.0, 18.0) == pytest.approx(140.0)
+
+
+def test_block_width_two_mols():
+    # 2 * 140 + 1 * (2*12 + 18) = 280 + 42 = 322
+    assert _block_width(2, 140.0, 12.0, 18.0) == pytest.approx(322.0)
+
+
+def test_block_width_zero():
+    assert _block_width(0, 140.0, 12.0, 18.0) == pytest.approx(0.0)
+
+
+def test_should_stack_true_when_overcrowded():
+    """With 6 reactants + 6 products + standard sizes, total > 800 → must stack."""
+    assert _should_stack(6, 6, 140.0, 12.0, 60.0, 18.0, 800.0) is True
+
+
+def test_should_stack_false_for_simple_reaction():
+    """1 reactant + 1 product with standard sizes fits in 800 → no stack."""
+    assert _should_stack(1, 1, 140.0, 12.0, 60.0, 18.0, 800.0) is False
+
+
+def test_layout_reaction_sets_stack_kwarg_when_overflow():
+    """A reaction that overflows reaction_max_width must emit stack=True."""
+    # 10 reactants of mol_w=140 each: 10*140 = 1400 > 800.
+    n = 10
+    entities = (
+        [Entity(id=f"r{i}", type=EntityType.METABOLITE, label=f"R{i}") for i in range(n)]
+        + [Entity(id="p0", type=EntityType.METABOLITE, label="P")]
+    )
+    relations = [
+        Relation(source=f"r{i}", target="p0", type=RelationType.GENERIC)
+        for i in range(n)
+    ]
+    fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {f"r{i}": "CC" for i in range(n)}
+    smiles["p0"] = "CCO"
+    entries = layout_reaction(fig, smiles_map=smiles)
+    assert entries[0].kwargs.get("stack") is True
+
+
+def test_layout_reaction_omits_stack_kwarg_when_fits():
+    """A small reaction must NOT set stack in kwargs."""
+    fig = _make_minimal_reaction()
+    entries = layout_reaction(fig, smiles_map={"a": "CC", "p": "CCO"})
+    assert "stack" not in entries[0].kwargs
+
+
+def test_layout_reaction_stacked_renders_without_error():
+    """A stacked LayoutEntry must execute without raising."""
+    n = 10
+    entities = (
+        [Entity(id=f"r{i}", type=EntityType.METABOLITE, label=f"R{i}") for i in range(n)]
+        + [Entity(id="p0", type=EntityType.METABOLITE, label="P")]
+    )
+    relations = [
+        Relation(source=f"r{i}", target="p0", type=RelationType.GENERIC)
+        for i in range(n)
+    ]
+    fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {f"r{i}": "CC" for i in range(n)}
+    smiles["p0"] = "CCO"
+    entries = layout_reaction(fig, smiles_map=smiles)
+    g = entries[0].primitive(*entries[0].args, **entries[0].kwargs)
+    assert isinstance(g, svgwrite.container.Group)
+
+
+# ---------------------------------------------------------------------------
+# V2 / R4: per-molecule label requests
+# ---------------------------------------------------------------------------
+
+def test_molecule_centers_flat_two_mols():
+    """For 1 reactant + 1 product with no stack, centers are on the same y row."""
+    centers = _molecule_centers(
+        ["r1"], ["p1"],
+        mol_w=140.0, mol_h=100.0,
+        gap=12.0, arrow_len=60.0, plus_w=18.0,
+        top_pad=0.0, stack=False, row_gap=24.0,
+    )
+    assert "r1" in centers and "p1" in centers
+    _, ry = centers["r1"]
+    _, py = centers["p1"]
+    assert ry == pytest.approx(py)           # same row
+
+
+def test_molecule_centers_stacked_different_rows():
+    """With stack=True, reactant and product must be on different y rows."""
+    centers = _molecule_centers(
+        ["r1"], ["p1"],
+        mol_w=140.0, mol_h=100.0,
+        gap=12.0, arrow_len=60.0, plus_w=18.0,
+        top_pad=0.0, stack=True, row_gap=24.0,
+    )
+    _, ry = centers["r1"]
+    _, py = centers["p1"]
+    assert py > ry + 50.0  # product is below reactant by at least mol_h/2
+
+
+def test_reaction_label_requests_returns_one_per_entity():
+    """reaction_label_requests must emit one LabelRequest per entity."""
+    fig = load_fixture("simple_reaction.json")
+    entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
+    requests = reaction_label_requests(fig, entries)
+    assert len(requests) == len(fig.entities)
+
+
+def test_reaction_label_requests_uses_entity_labels():
+    """Each LabelRequest.text must match the corresponding entity.label."""
+    fig = load_fixture("simple_reaction.json")
+    entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
+    requests = reaction_label_requests(fig, entries)
+    labels = {r.text for r in requests}
+    entity_labels = {e.label for e in fig.entities}
+    assert labels == entity_labels
+
+
+def test_reaction_label_requests_ir_ids_match_entities():
+    """Each LabelRequest.ir_id must be an entity id in the figure."""
+    fig = load_fixture("simple_reaction.json")
+    entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
+    requests = reaction_label_requests(fig, entries)
+    entity_ids = {e.id for e in fig.entities}
+    for req in requests:
+        assert req.ir_id in entity_ids
+
+
+def test_reaction_label_requests_empty_entries():
+    """Empty entries list must return empty requests (not raise)."""
+    fig = load_fixture("simple_reaction.json")
+    requests = reaction_label_requests(fig, [])
+    assert requests == []
+
+
+def test_reaction_label_requests_below_priority():
+    """Compound-name labels must prefer 'below' placement over other directions."""
+    fig = load_fixture("simple_reaction.json")
+    entries = layout_reaction(fig, smiles_map=ESTERIFICATION_SMILES)
+    requests = reaction_label_requests(fig, entries)
+    for req in requests:
+        assert req.priority[0] == "below"
+
+
+def test_reaction_labels_rendered_in_end_to_end():
+    """End-to-end: a rendered SVG must contain each entity label text."""
+    from imageGen.render.compositor import render_figure
+    import tempfile
+    from pathlib import Path as _Path
+
+    fig = load_fixture("simple_reaction.json")
+    smiles = {"acid": "CC(=O)O", "alcohol": "CCO", "ester": "CCOC(C)=O"}
+    with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as f:
+        p = _Path(f.name)
+    render_figure(fig, p, smiles_map=smiles, format="svg")
+    svg = p.read_text()
+    for ent in fig.entities:
+        assert ent.label in svg, f"Label {ent.label!r} missing from SVG"
+    p.unlink()

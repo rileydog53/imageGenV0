@@ -10,7 +10,7 @@ from imageGen.ir.schema import (
 )
 from imageGen.layout.panel_layout import (
     ARCHETYPE_TO_LAYOUT,
-    DEFAULT_LAYOUT_PARAMS,
+    PANEL_DEFAULT_PARAMS,
     _cell_size,
     _grid_extent,
     _panel_chrome,
@@ -188,7 +188,7 @@ def test_pathway_subengine_canvas_matches_panel_cell():
     entries = layout_panel(fig)
     chrome = _chrome_entries(entries)[0]
     _, cx, cy, cw, ch = chrome.args
-    title_h = DEFAULT_LAYOUT_PARAMS["panel_title_height"]
+    title_h = PANEL_DEFAULT_PARAMS["panel_title_height"]
     # entries shifted into this chrome must satisfy
     #   cx <= position_x < cx + cw
     #   cy + title_h <= position_y < cy + ch
@@ -229,7 +229,7 @@ def test_entries_are_executable():
 
 
 def test_default_layout_params_keys_are_namespaced():
-    for key in DEFAULT_LAYOUT_PARAMS:
+    for key in PANEL_DEFAULT_PARAMS:
         assert key.startswith("panel_"), f"non-namespaced key: {key}"
 
 

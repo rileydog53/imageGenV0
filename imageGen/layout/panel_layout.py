@@ -57,7 +57,7 @@ from imageGen.layout.types import LayoutEntry
 # DEFAULT_STYLE dicts; flat namespaced keys for predictable union).
 # ---------------------------------------------------------------------------
 
-DEFAULT_LAYOUT_PARAMS: dict[str, Any] = {
+PANEL_DEFAULT_PARAMS: dict[str, Any] = {
     "panel_canvas":           (1200.0, 600.0),  # (w, h) of full multi-panel area
     "panel_origin":           (0.0, 0.0),       # top-left of the figure
     "panel_margin":           20.0,             # outer margin around the panel grid
@@ -224,7 +224,7 @@ def layout_panel(
         smiles_maps: For panels whose content has archetype REACTION_SCHEME,
             maps panel.id → entity_id → SMILES. A reaction panel without an
             entry raises ValueError.
-        layout_params: Optional overlay onto DEFAULT_LAYOUT_PARAMS plus any
+        layout_params: Optional overlay onto PANEL_DEFAULT_PARAMS plus any
             sub-engine knobs to forward (the engine threads `pathway_*` and
             `reaction_*` keys through unchanged).
         style_dict: Forwarded as-is to every sub-engine call.
@@ -244,7 +244,7 @@ def layout_panel(
     if not figure.panels:
         raise ValueError("layout_panel requires a non-empty panels list")
 
-    params = {**DEFAULT_LAYOUT_PARAMS, **(layout_params or {})}
+    params = {**PANEL_DEFAULT_PARAMS, **(layout_params or {})}
     canvas = params["panel_canvas"]
     origin = params["panel_origin"]
     margin = float(params["panel_margin"])

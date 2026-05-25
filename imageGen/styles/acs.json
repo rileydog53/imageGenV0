@@ -59,5 +59,20 @@
     "nuclear_outer_stroke": "#1A1A1A",
     "nuclear_inner_stroke": "#1A1A1A",
     "nuclear_pore_fill": "#A6A6A6"
+  },
+  "layout_overrides": {
+    "pathway_band_fill":          "#F5F5F5",
+    "pathway_band_stroke":        "#AAAAAA",
+    "pathway_band_stroke_width":  0.5,
+    "pathway_band_label_color":   "#1A1A1A",
+    "pathway_band_label_size":    10,
+    "pathway_band_label_family":  "Times, Times New Roman, serif",
+    "panel_border_stroke":        "#888888",
+    "panel_border_stroke_width":  0.75,
+    "panel_border_fill":          "none",
+    "panel_title_color":          "#000000",
+    "panel_title_size":           11,
+    "panel_title_family":         "Times, Times New Roman, serif",
+    "panel_title_weight":         "bold"
   }
 }

@@ -37,7 +37,8 @@ def test_content_bounds_excludes_band(tmp_path):
     """A single-band pathway's content box is the entities, not the full canvas."""
     svg = _render(tmp_path)
     content, canvas = content_bounds(svg)
-    assert canvas == (0.0, 0.0, 800.0, 600.0)
+    # L19: 1-band figure floor is n_bands * _BAND_BASELINE (100), not old hardcoded 600.
+    assert canvas == (0.0, 0.0, 800.0, 100.0)
     # Content occupies only a thin strip — far shorter than the full canvas,
     # which proves the full-canvas decorative band was excluded.
     content_h = content[3] - content[1]
@@ -120,4 +121,5 @@ def test_apply_crop_keep_aspect_preserves_canvas_size(tmp_path):
     width = float(re.search(r'\swidth="([\d.]+)"', tag).group(1))
     height = float(re.search(r'\sheight="([\d.]+)"', tag).group(1))
     # keep-aspect leaves the canvas dimensions so content scales uniformly.
-    assert (width, height) == (800.0, 600.0)
+    # L19: single-band canvas is now 800 × 100 (not 800 × 600).
+    assert (width, height) == (800.0, 100.0)

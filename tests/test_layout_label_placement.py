@@ -7,7 +7,7 @@ import svgwrite.container
 
 from imageGen.ir.schema import Figure
 from imageGen.layout.label_placement import (
-    DEFAULT_LAYOUT_PARAMS,
+    LABEL_DEFAULT_PARAMS,
     LabelPlacementError,
     LabelRequest,
     _estimate_text_bbox,
@@ -39,17 +39,17 @@ def _label_entries(entries: list[LayoutEntry]) -> list[LayoutEntry]:
 
 
 # ---------------------------------------------------------------------------
-# DEFAULT_LAYOUT_PARAMS / namespacing
+# LABEL_DEFAULT_PARAMS / namespacing
 # ---------------------------------------------------------------------------
 
 def test_default_layout_params_completeness():
     for key in ("label_anchor_gap", "label_collision_margin"):
-        assert key in DEFAULT_LAYOUT_PARAMS
-        assert isinstance(DEFAULT_LAYOUT_PARAMS[key], float)
+        assert key in LABEL_DEFAULT_PARAMS
+        assert isinstance(LABEL_DEFAULT_PARAMS[key], float)
 
 
 def test_default_layout_params_keys_are_namespaced():
-    for key in DEFAULT_LAYOUT_PARAMS:
+    for key in LABEL_DEFAULT_PARAMS:
         assert key.startswith("label_"), f"non-namespaced key: {key}"
 
 

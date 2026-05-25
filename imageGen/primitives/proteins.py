@@ -37,6 +37,8 @@ import svgwrite.path
 import svgwrite.shapes
 import svgwrite.text
 
+from imageGen.primitives._text import centered_label as _centered_label  # noqa: F401
+
 DEFAULT_STYLE: dict = {
     # Generic protein (rounded rectangle)
     "protein_fill": "#7BB6E0",
@@ -78,31 +80,6 @@ DEFAULT_STYLE: dict = {
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-def _centered_label(
-    text: str,
-    cx: float,
-    cy: float,
-    style: dict,
-    *,
-    weight: str = "normal",
-    color: Optional[str] = None,
-    size_override: Optional[float] = None,
-) -> svgwrite.text.Text:
-    """Build a horizontally + vertically centered text element."""
-    t = svgwrite.text.Text(
-        text,
-        insert=(cx, cy),
-        font_family=style["label_font_family"],
-        font_size=float(size_override or style["label_font_size"]),
-        fill=color or style["label_font_color"],
-    )
-    t["text-anchor"] = "middle"
-    t["dominant-baseline"] = "central"
-    if weight != "normal":
-        t["font-weight"] = weight
-    return t
-
 
 def _maybe_rotate(
     group: svgwrite.container.Group,
