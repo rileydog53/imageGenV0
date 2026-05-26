@@ -1,0 +1,29 @@
+{
+  "archetype": "pathway",
+  "title": "Coagulation cascade",
+  "entities": [
+    {"id": "f12", "type": "protein", "label": "Factor XII"},
+    {"id": "f11", "type": "protein", "label": "Factor XI"},
+    {"id": "f9", "type": "protein", "label": "Factor IX"},
+    {"id": "tf", "type": "protein", "label": "Tissue Factor"},
+    {"id": "f7", "type": "protein", "label": "Factor VII"},
+    {"id": "f10", "type": "protein", "label": "Factor X"},
+    {"id": "f5", "type": "protein", "label": "Factor V"},
+    {"id": "prothrombin", "type": "protein", "label": "Prothrombin"},
+    {"id": "thrombin", "type": "protein", "label": "Thrombin"},
+    {"id": "fibrinogen", "type": "protein", "label": "Fibrinogen"},
+    {"id": "fibrin", "type": "generic", "label": "Fibrin clot"}
+  ],
+  "relations": [
+    {"source": "f12", "target": "f11", "type": "activates", "label": "intrinsic"},
+    {"source": "f11", "target": "f9", "type": "activates"},
+    {"source": "f9", "target": "f10", "type": "activates"},
+    {"source": "tf", "target": "f7", "type": "activates", "label": "extrinsic"},
+    {"source": "f7", "target": "f10", "type": "activates"},
+    {"source": "f10", "target": "prothrombin", "type": "activates", "label": "common"},
+    {"source": "f5", "target": "prothrombin", "type": "activates", "label": "cofactor"},
+    {"source": "prothrombin", "target": "thrombin", "type": "activates"},
+    {"source": "thrombin", "target": "fibrinogen", "type": "activates"},
+    {"source": "fibrinogen", "target": "fibrin", "type": "activates", "label": "polymerize"}
+  ]
+}

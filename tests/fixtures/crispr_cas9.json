@@ -1,0 +1,21 @@
+{
+  "archetype": "mechanism_cartoon",
+  "title": "CRISPR-Cas9 target recognition and cleavage",
+  "entities": [
+    {"id": "cas9", "type": "protein", "label": "Cas9"},
+    {"id": "sgrna", "type": "gene", "label": "sgRNA"},
+    {"id": "rnp", "type": "generic", "label": "Cas9-sgRNA RNP"},
+    {"id": "dna", "type": "gene", "label": "Target DNA"},
+    {"id": "pam", "type": "gene", "label": "PAM site"},
+    {"id": "rloop", "type": "generic", "label": "R-loop"},
+    {"id": "dsb", "type": "gene", "label": "Double-strand break"}
+  ],
+  "relations": [
+    {"source": "cas9", "target": "rnp", "type": "binds", "label": "load"},
+    {"source": "sgrna", "target": "rnp", "type": "binds"},
+    {"source": "rnp", "target": "pam", "type": "binds", "label": "scan for PAM"},
+    {"source": "pam", "target": "rloop", "type": "generic", "label": "unwind"},
+    {"source": "dna", "target": "rloop", "type": "generic"},
+    {"source": "rloop", "target": "dsb", "type": "generic", "label": "cleave"}
+  ]
+}
