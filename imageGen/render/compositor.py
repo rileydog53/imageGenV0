@@ -44,6 +44,7 @@ Step coupling:
 from __future__ import annotations
 
 import importlib
+import warnings
 from pathlib import Path
 from typing import Any, Literal
 
@@ -65,12 +66,13 @@ from imageGen.layout.pathway_layout import (
 )
 from imageGen.layout.reaction_layout import (
     REACTION_DEFAULT_PARAMS,
+    is_linear_chain_reaction,
     layout_reaction,
     reaction_label_requests,
 )
 from imageGen.layout.types import LayoutEntry
 from imageGen.render.export import svg_to_pdf, svg_to_png
-from imageGen.styles.loader import DEFAULT_PRESET, load_style
+from imageGen.styles.loader import DEFAULT_PRESET, load_style, load_preset_full
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -97,6 +99,7 @@ def render_figure(
     display_dpi: int | None = None,
     canvas: tuple[float, float] | None = None,
     strict_labels: bool = False,
+    autocrop: bool = False,
 ) -> Path:
     """Render an IR Figure to a file and return the resolved output Path.
 
@@ -120,6 +123,11 @@ def render_figure(
         display_dpi: When set (e.g. 96), also writes a low-resolution
             screen copy at ``<stem>_display.png`` next to the deliverable.
             Never overwrites the main output. Ignored when format != "png".
+        autocrop: When True, post-process the written SVG to trim excess
+            whitespace (L22). If any canvas edge has more than 15% dead
+            margin, the SVG's ``viewBox`` and ``width``/``height`` are
+            rewritten in-place before any PNG/PDF export. Default False
+            to preserve canonical dimensions in existing golden tests.
 
     Returns:
         Resolved Path to the written file. For non-SVG formats a sibling
@@ -135,7 +143,28 @@ def render_figure(
     output_path = Path(output_path)
     fmt = _resolve_format(output_path, format)
     style_dict = _resolve_style(ir, style_name)
-    entries = _dispatch_layout(ir, style_dict, smiles_map)
+    # ST4: build per-panel style dicts for panels whose preset differs from top-level.
+    panel_styles = _build_panel_styles(ir, style_name) if ir.panels else {}
+    # R6: a multi-step reaction (one entity is both source and target) that
+    # forms a single linear chain is rendered as a molecule sequence by
+    # layout_reaction (keeping skeletal structures + the reaction_0 group).
+    # Only non-linear multi-step graphs (branching / convergence / cycles)
+    # can't be drawn as a reaction, so those still fall back to the PATHWAY
+    # engine. Coercing the archetype here routes every downstream consumer
+    # that keys off it -- layout dispatch, label-request selection, and canvas
+    # sizing -- through the pathway path in one decision.
+    if _is_multistep_reaction(ir) and not is_linear_chain_reaction(ir):
+        if smiles_map:
+            warnings.warn(
+                "Non-linear multi-step reaction routed through the pathway "
+                "engine; SMILES structures will not be drawn (entities render "
+                "as labelled boxes). Re-encode parallel reactions as separate "
+                "reactant→product edges to keep chemical structures.",
+                UserWarning,
+                stacklevel=2,
+            )
+        ir = ir.model_copy(update={"archetype": Archetype.PATHWAY})
+    entries = _dispatch_layout(ir, style_dict, smiles_map, panel_styles=panel_styles)
 
     # L18: compute canvas before label placement so the bounds can be forwarded
     # to place_labels, preventing labels from rendering outside the SVG viewport.
@@ -145,7 +174,7 @@ def render_figure(
         if ir.panels:
             entries = _place_labels_per_panel(
                 ir, entries, style_dict, strict_labels=strict_labels,
-                canvas=computed_canvas,
+                canvas=computed_canvas, panel_styles=panel_styles,
             )
         else:
             label_fn = _label_requests_fn(ir.archetype)
@@ -163,6 +192,8 @@ def render_figure(
     final_canvas = canvas if canvas is not None else computed_canvas
     svg_path = output_path if fmt == "svg" else output_path.with_suffix(".svg")
     _write_svg(entries, final_canvas, svg_path)
+    if autocrop:
+        _autocrop_svg(svg_path)
     if fmt == "png":
         svg_to_png(svg_path, output_path, dpi=dpi)
         if display_dpi is not None:
@@ -184,6 +215,26 @@ def _resolve_style(ir: Figure, style_name: str | None) -> dict[str, Any]:
     return load_style(name)
 
 
+def _build_panel_styles(
+    ir: Figure, top_style_name: str | None
+) -> dict[str, dict[str, Any]]:
+    """Return per-panel style dicts for panels whose preset differs from the top level.
+
+    ST4: ``panel.content.style_preset`` is the per-panel preset selector. If a
+    panel's preset matches the top-level preset (resolved from kwarg >
+    ir.style_preset > default), we skip it — the global style_dict already
+    covers it. Only panels that differ from the top-level get entries here;
+    the caller falls back to the global style for the rest.
+    """
+    top_name = top_style_name or ir.style_preset or DEFAULT_PRESET
+    result: dict[str, dict[str, Any]] = {}
+    for panel in ir.panels:
+        panel_preset = panel.content.style_preset or DEFAULT_PRESET
+        if panel_preset != top_name:
+            result[panel.id] = load_style(panel_preset)
+    return result or {}
+
+
 def _resolve_format(
     output_path: Path, format: Format | None
 ) -> Format:
@@ -198,10 +249,28 @@ def _resolve_format(
     return suffix  # type: ignore[return-value]
 
 
+def _is_multistep_reaction(ir: Figure) -> bool:
+    """True when *ir* is a REACTION_SCHEME with an intermediate entity.
+
+    An intermediate is an entity that is both the source of one relation and
+    the target of another -- i.e. a multi-step reaction (A→B→C). `layout_reaction`
+    raises NotImplementedError on these because a single-row reactant→product
+    layout can't express a chain; the official answer (BACKLOG R3) is to render
+    them as a pathway. The routing decision lives here at dispatch time;
+    `layout_reaction` keeps its fail-loud contract when called directly.
+    """
+    if ir.archetype != Archetype.REACTION_SCHEME:
+        return False
+    sources = {r.source for r in ir.relations}
+    targets = {r.target for r in ir.relations}
+    return bool(sources & targets)
+
+
 def _dispatch_layout(
     ir: Figure,
     style_dict: dict[str, Any],
     smiles_map: dict[str, str] | None,
+    panel_styles: dict[str, dict[str, Any]] | None = None,
 ) -> list[LayoutEntry]:
     """Call the appropriate layout engine for the IR shape.
 
@@ -216,12 +285,19 @@ def _dispatch_layout(
     `{panel.id: smiles_map}` shape that `layout_panel` expects — entity
     ids are unique across the figure (IR validates), so broadcasting
     the same dict to every panel is safe.
+
+    ``panel_styles`` (V2/ST4): per-panel style dicts keyed by panel id.
+    Passed through to ``layout_panel`` so each panel's sub-engine uses
+    its own preset.
     """
     if ir.panels:
         smiles_maps = (
             {p.id: smiles_map for p in ir.panels} if smiles_map else None
         )
-        return layout_panel(ir, smiles_maps=smiles_maps, style_dict=style_dict)
+        return layout_panel(
+            ir, smiles_maps=smiles_maps, style_dict=style_dict,
+            style_dicts=panel_styles or None,
+        )
     if ir.archetype in _PATHWAY_COMPATIBLE_ARCHETYPES:
         return layout_pathway(ir, style_dict=style_dict)
     if ir.archetype == Archetype.REACTION_SCHEME:
@@ -245,6 +321,7 @@ def _place_labels_per_panel(
     *,
     strict_labels: bool = False,
     canvas: tuple[float, float] | None = None,
+    panel_styles: dict[str, dict[str, Any]] | None = None,
 ) -> list[LayoutEntry]:
     """Run label placement separately for each panel's slice of entries.
 
@@ -279,8 +356,9 @@ def _place_labels_per_panel(
             continue
         panel_offset = bucket[0].position  # shared by every sub-entry
         requests = label_fn(panel.content, bucket)
+        effective_style = (panel_styles or {}).get(panel.id, style_dict)
         placed = place_labels(
-            bucket, requests, style_dict=style_dict,
+            bucket, requests, style_dict=effective_style,
             canvas=canvas, strict_labels=strict_labels,
         )
         result.extend(placed[:len(bucket)])
@@ -382,6 +460,28 @@ def _tag_group(
     group._parameter.debug = False  # allow data-* attrs; debug is a read-only property
     group.attribs["id"] = scoped_id(raw_ir_id, panel_chain)
     group.attribs["data-ir-id"] = raw_ir_id
+
+
+def _autocrop_svg(svg_path: Path) -> None:
+    """Trim the SVG viewport in-place to its content bbox + small margin (L22).
+
+    Consumes the ``needs_crop`` signal from ``legibility_check``: when any
+    canvas edge has more than 15% dead whitespace, the SVG's ``viewBox``
+    and ``width``/``height`` are updated so the figure ships without dead
+    margin. The original SVG file is overwritten; callers that want to
+    preserve the original should copy it first.
+    """
+    from imageGen.render.crop import crop_box, _rewrite_svg_frame  # noqa: PLC0415
+    from imageGen.verify.legibility_check import (  # noqa: PLC0415
+        content_bounds,
+        _needs_crop,
+        DEFAULT_CROP_WHITESPACE_FRACTION,
+    )
+    content, canvas = content_bounds(svg_path)
+    if not _needs_crop(content, canvas, DEFAULT_CROP_WHITESPACE_FRACTION):
+        return
+    box = crop_box(content, canvas, margin_frac=0.05)
+    _rewrite_svg_frame(svg_path, box, set_size=True)
 
 
 def _write_svg(

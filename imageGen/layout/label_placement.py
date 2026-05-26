@@ -59,9 +59,9 @@ from typing import Any
 
 import svgwrite.container
 
-from imageGen.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE
+from imageGen.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE, PRIMITIVE_REGISTRY
 from imageGen.layout.types import LayoutEntry
-from imageGen.primitives import proteins
+from imageGen.primitives import nucleic_acids, proteins
 from imageGen.primitives._text import centered_label as _centered_label
 
 
@@ -71,6 +71,14 @@ from imageGen.primitives._text import centered_label as _centered_label
 _FONT_SHRINK_FACTOR = 0.85          # one 15%-smaller retry step (stays ≥ 6pt floor)
 _ANCHOR_NUDGES: tuple[tuple[float, float], ...] = (
     (8.0, 0.0), (-8.0, 0.0), (0.0, 8.0), (0.0, -8.0),
+)
+# Larger corridor nudges tried *after* _ANCHOR_NUDGES — handles short arrows
+# beside wide nodes where all nearby slots collide with the node label (L24).
+# Offsets are ±24 and ±40 px in both axes, covering perpendicular positions
+# both above/below a horizontal arrow and left/right of a vertical one.
+_LARGE_NUDGES: tuple[tuple[float, float], ...] = (
+    (0.0, -24.0), (0.0, 24.0), (-24.0, 0.0), (24.0, 0.0),
+    (0.0, -40.0), (0.0, 40.0), (-40.0, 0.0), (40.0, 0.0),
 )
 
 
@@ -207,13 +215,9 @@ def _overlaps(a: Bbox, b: Bbox, margin: float) -> bool:
     )
 
 
-_ENTITY_PRIMITIVES: frozenset = frozenset({
-    proteins.generic_protein,
-    proteins.kinase,
-    proteins.receptor,
-    proteins.gpcr,
-    proteins.transcription_factor,
-})
+# Derived from PRIMITIVE_REGISTRY so any primitive added to the registry
+# (including L6 overrides) automatically participates in collision detection.
+_ENTITY_PRIMITIVES: frozenset = frozenset(PRIMITIVE_REGISTRY.values())
 
 
 def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
@@ -352,6 +356,14 @@ def _place_with_fallback(
 
     ax, ay = request.anchor
     for dx, dy in _ANCHOR_NUDGES:
+        hit = _first_fit(request, small, (ax + dx, ay + dy), occupied, gap, margin, canvas)
+        if hit is not None:
+            return (*hit, small_font, False)
+
+    # Step 3.5 (L24): wider corridor nudges for labels on short arrows beside
+    # wide nodes — all nearby priority slots may already be inside the node
+    # label bbox, so push the label further out perpendicular to the shaft.
+    for dx, dy in _LARGE_NUDGES:
         hit = _first_fit(request, small, (ax + dx, ay + dy), occupied, gap, margin, canvas)
         if hit is not None:
             return (*hit, small_font, False)

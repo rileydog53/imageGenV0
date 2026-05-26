@@ -16,6 +16,7 @@ from imageGen.primitives.nucleic_acids import (
     DEFAULT_STYLE,
     chromatin,
     dna_segment,
+    gene_helix,
     rna_segment,
 )
 from tests._helpers import render_group_to_png
@@ -181,3 +182,39 @@ def test_nucleic_acidsrender_group_to_png():
         out = render_group_to_png(group, filename, canvas=canvas)
         assert out.exists(), f"PNG not written: {out}"
         assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"
+
+
+# ---------------------------------------------------------------------------
+# gene_helix tests
+# ---------------------------------------------------------------------------
+
+def test_gene_helix_returns_group():
+    """gene_helix must return a Group."""
+    g = gene_helix("TP53", (40.0, 20.0))
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_gene_helix_custom_size_returns_group():
+    """gene_helix with an explicit size must return a Group."""
+    g = gene_helix("BRCA1", (60.0, 30.0), size=(100.0, 50.0))
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_gene_helix_style_override_does_not_crash():
+    """gene_helix accepts style overrides without raising."""
+    g = gene_helix("MYC", (40.0, 20.0), style_dict={"dna_strand1_stroke": "#FF0000"})
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_gene_helix_color_param_accepted():
+    """gene_helix accepts color kwarg for API parity with generic_protein; no crash."""
+    g = gene_helix("KRAS", (40.0, 20.0), color="#AABBCC")
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_gene_helix_render_to_png():
+    """gene_helix renders to a non-empty PNG."""
+    g = gene_helix("TP53", (40.0, 20.0))
+    out = render_group_to_png(g, "gene_helix.png", canvas=(80, 40))
+    assert out.exists(), f"PNG not written: {out}"
+    assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"

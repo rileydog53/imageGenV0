@@ -5,7 +5,7 @@ import pytest
 import svgwrite
 import svgwrite.container
 
-from imageGen.ir.schema import Figure
+from imageGen.ir.schema import Archetype, Entity, EntityType, Figure, Relation, RelationType
 from imageGen.layout.label_placement import (
     LABEL_DEFAULT_PARAMS,
     LabelPlacementError,
@@ -226,6 +226,100 @@ def test_pathway_integration_renders_relation_labels():
     assert len(new_labels) == len(requests)
     # Original entries preserved unmodified at the head.
     assert out[: len(entries)] == entries
+
+
+# ---------------------------------------------------------------------------
+# V2 / L5: per-entity sublabel requests
+# ---------------------------------------------------------------------------
+
+def _figure_with_sublabel(sublabel: str) -> Figure:
+    return Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[Entity(
+            id="p1", label="ERK", type=EntityType.PROTEIN,
+            style={"sublabel": sublabel},
+        )],
+    )
+
+
+def test_sublabel_emits_label_request():
+    """An entity with style['sublabel'] must produce a LabelRequest."""
+    fig = _figure_with_sublabel("(phosphorylated)")
+    entries = layout_pathway(fig)
+    requests = pathway_label_requests(fig, entries)
+    sublabel_reqs = [r for r in requests if r.text == "(phosphorylated)"]
+    assert len(sublabel_reqs) == 1
+
+
+def test_sublabel_request_ir_id_is_entity_id_plus_sublabel():
+    """Sublabel LabelRequest ir_id must be '<entity.id>_sublabel'."""
+    fig = _figure_with_sublabel("Y204")
+    entries = layout_pathway(fig)
+    requests = pathway_label_requests(fig, entries)
+    sublabel_reqs = [r for r in requests if "_sublabel" in (r.ir_id or "")]
+    assert sublabel_reqs
+    assert sublabel_reqs[0].ir_id == "p1_sublabel"
+
+
+def test_sublabel_anchor_matches_entity_center():
+    """Sublabel anchor must equal the entity's layout position."""
+    fig = _figure_with_sublabel("badge")
+    entries = layout_pathway(fig)
+    entity_entry = next(e for e in entries if e.ir_id == "p1")
+    expected_center = entity_entry.args[1]
+    requests = pathway_label_requests(fig, entries)
+    sublabel_req = next(r for r in requests if "_sublabel" in (r.ir_id or ""))
+    assert sublabel_req.anchor == pytest.approx(expected_center)
+
+
+def test_sublabel_priority_starts_with_below():
+    """Sublabel priority must prefer 'below' first (avoids arrow shafts above)."""
+    fig = _figure_with_sublabel("tag")
+    entries = layout_pathway(fig)
+    requests = pathway_label_requests(fig, entries)
+    sublabel_req = next(r for r in requests if "_sublabel" in (r.ir_id or ""))
+    assert sublabel_req.priority[0] == "below"
+
+
+def test_no_sublabel_emits_no_extra_request():
+    """Entity without sublabel in style must not produce extra LabelRequests."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[Entity(id="e1", label="AKT", type=EntityType.PROTEIN)],
+    )
+    entries = layout_pathway(fig)
+    requests = pathway_label_requests(fig, entries)
+    assert not any("_sublabel" in (r.ir_id or "") for r in requests)
+
+
+def test_sublabel_placed_in_full_pipeline(tmp_path):
+    """Sublabel survives the full label-placement pipeline and appears in SVG."""
+    from imageGen.render.compositor import render_figure
+    fig = _figure_with_sublabel("pY204")
+    out = render_figure(fig, tmp_path / "sublabel.svg")
+    svg = out.read_text()
+    assert "pY204" in svg
+
+
+def test_sublabel_alongside_relation_label():
+    """Entity sublabel and relation label both appear as separate requests."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", label="Src", type=EntityType.KINASE,
+                   style={"sublabel": "active"}),
+            Entity(id="b", label="Erk", type=EntityType.PROTEIN),
+        ],
+        relations=[Relation(
+            source="a", target="b",
+            type=RelationType.ACTIVATES, label="phosphorylates",
+        )],
+    )
+    entries = layout_pathway(fig)
+    requests = pathway_label_requests(fig, entries)
+    texts = {r.text for r in requests}
+    assert "active" in texts
+    assert "phosphorylates" in texts
 
 
 # ---------------------------------------------------------------------------

@@ -427,6 +427,53 @@ def rna_segment(
     return group
 
 
+def gene_helix(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (80.0, 40.0),
+    color: str | None = None,  # accepted for API parity with generic_protein; unused
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """Render a GENE entity as a horizontal DNA double helix with a label below.
+
+    Follows the same (label, position, size, color, style_dict) calling
+    convention as proteins.generic_protein so ENTITY_TO_PRIMITIVE dispatch
+    works transparently. The helix axis runs across the bounding box,
+    shifted upward so the label fits below without clipping. Amplitude
+    scales with bbox height so the helix stays within the entity's collision
+    footprint at all sizes.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    cx, cy = position
+    w, h = size
+
+    margin_x = max(4.0, w * 0.05)
+    amplitude = min(h * 0.30, float(s["dna_amplitude"]))
+    helix_cy = cy - h * 0.18        # shift helix up to leave room for label below
+
+    helix_grp = dna_segment(
+        (cx - w / 2 + margin_x, helix_cy),
+        (cx + w / 2 - margin_x, helix_cy),
+        double_helix=True,
+        style_dict={**s, "dna_amplitude": amplitude},
+    )
+
+    group = svgwrite.container.Group()
+    group.add(helix_grp)
+
+    lbl = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.35, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    lbl["text-anchor"] = "middle"
+    lbl["dominant-baseline"] = "central"
+    group.add(lbl)
+    return group
+
+
 def chromatin(
     region: tuple[tuple[float, float], tuple[float, float]],
     condensation_level: float = 0.0,

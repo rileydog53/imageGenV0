@@ -21,6 +21,8 @@ from imageGen.layout.pathway_layout import (
     _midpoint_of_path,
     _phosphorylation_arrow,
     _relation_glyph,
+    _route_same_band_arrows,
+    _segment_hits_rect,
     compute_pathway_canvas,
     layout_pathway,
 )
@@ -218,12 +220,16 @@ def test_layout_entries_are_executable():
 
 def test_layout_params_override_seed_and_canvas():
     fig = load_fixture("mapk_cascade.json")
-    a = layout_pathway(fig, layout_params={"pathway_seed": 1})
-    b = layout_pathway(fig, layout_params={"pathway_seed": 2})
-    a_pos = [e.args[1] for e in _entity_entries(a)]
-    b_pos = [e.args[1] for e in _entity_entries(b)]
-    # different seed → at least one entity ordering differs
-    assert a_pos != b_pos or len(fig.entities) <= 1
+    # MAPK is a strict linear DAG (Ras→Raf→MEK→ERK). With DAG-aware init
+    # (L16) the topological rank dominates spring relaxation, so entities land
+    # in left-to-right topological order regardless of seed.
+    entries = layout_pathway(fig, layout_params={"pathway_seed": 42})
+    ent_map = {e.ir_id: e.args[1][0] for e in _entity_entries(entries)}
+    assert ent_map["ras"] < ent_map["raf"] < ent_map["mek"] < ent_map["erk"]
+
+    # Seed parameter is still accepted (no error) with either value.
+    layout_pathway(fig, layout_params={"pathway_seed": 1})
+    layout_pathway(fig, layout_params={"pathway_seed": 2})
 
     big = layout_pathway(fig, layout_params={"pathway_canvas": (1600.0, 1200.0)})
     _, _, _, w, _ = _band_geom(_band_entries(big)[0])
@@ -649,3 +655,189 @@ def test_phosphorylation_arrow_end_to_end_in_layout():
     assert len(arrow_entries) == 1
     g = arrow_entries[0].primitive(*arrow_entries[0].args, **arrow_entries[0].kwargs)
     assert ">P<" in g.tostring()
+
+
+# ---------------------------------------------------------------------------
+# V2 / L1: same-band straight vs. arch routing
+# ---------------------------------------------------------------------------
+
+def test_segment_hits_rect_through_center():
+    # Horizontal segment passing straight through a centred rect.
+    assert _segment_hits_rect((0.0, 0.0), (100.0, 0.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_clears_above():
+    # Same span but well above the rect → no hit.
+    assert not _segment_hits_rect((0.0, -50.0), (100.0, -50.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_stops_short():
+    # Segment ends before reaching the rect → no hit.
+    assert not _segment_hits_rect((0.0, 0.0), (20.0, 0.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_vertical():
+    assert _segment_hits_rect((50.0, -50.0), (50.0, 50.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def test_segment_hits_rect_parallel_miss():
+    # Collinear-with-edge but offset segment never enters the rect.
+    assert not _segment_hits_rect((0.0, 100.0), (100.0, 100.0), 50.0, 0.0, 10.0, 10.0)
+
+
+def _arrows_by_relation(fig, entries):
+    """Map (source, target) → arrow LayoutEntry, in figure order."""
+    return {
+        (r.source, r.target): e
+        for r, e in zip(fig.relations, _arrow_entries(entries))
+    }
+
+
+def test_same_band_adjacent_arrow_is_straight():
+    """An arrow between two same-band entities with nothing between them is a
+    straight line — no elbow waypoints."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="b", type=EntityType.PROTEIN, label="B"),
+        ],
+        relations=[Relation(source="a", target="b", type=RelationType.ACTIVATES)],
+    )
+    entries = layout_pathway(fig)
+    arrow = _arrows_by_relation(fig, entries)[("a", "b")]
+    assert arrow.kwargs.get("waypoints") is None
+
+
+def test_same_band_skip_arrow_arches():
+    """A skip arrow (A→C over an intervening B) routes as a 4-point arch."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="b", type=EntityType.PROTEIN, label="B"),
+            Entity(id="c", type=EntityType.PROTEIN, label="C"),
+        ],
+        relations=[
+            Relation(source="a", target="b", type=RelationType.ACTIVATES),
+            Relation(source="b", target="c", type=RelationType.ACTIVATES),
+            Relation(source="a", target="c", type=RelationType.ACTIVATES),
+        ],
+    )
+    entries = layout_pathway(fig)
+    by_rel = _arrows_by_relation(fig, entries)
+    # Adjacent links stay straight; the skip link arches.
+    assert by_rel[("a", "b")].kwargs.get("waypoints") is None
+    assert by_rel[("b", "c")].kwargs.get("waypoints") is None
+    skip = by_rel[("a", "c")].kwargs.get("waypoints")
+    assert skip is not None and len(skip) == 4
+
+
+def test_overlapping_arches_get_distinct_lanes():
+    """Two skip arrows sharing a source (A→C and A→D) must not collapse onto
+    the same corridor — their horizontal legs sit at different y."""
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="b", type=EntityType.PROTEIN, label="B"),
+            Entity(id="c", type=EntityType.PROTEIN, label="C"),
+            Entity(id="d", type=EntityType.PROTEIN, label="D"),
+        ],
+        relations=[
+            Relation(source="a", target="b", type=RelationType.ACTIVATES),
+            Relation(source="b", target="c", type=RelationType.ACTIVATES),
+            Relation(source="c", target="d", type=RelationType.ACTIVATES),
+            Relation(source="a", target="c", type=RelationType.ACTIVATES),
+            Relation(source="a", target="d", type=RelationType.ACTIVATES),
+        ],
+    )
+    entries = layout_pathway(fig)
+    by_rel = _arrows_by_relation(fig, entries)
+    ac = by_rel[("a", "c")].kwargs["waypoints"]
+    ad = by_rel[("a", "d")].kwargs["waypoints"]
+    # corridor y is the second waypoint's y; the two arches must differ.
+    assert ac[1][1] != ad[1][1]
+
+
+def test_cross_band_arrow_still_uses_corridor():
+    """Cross-band arrows keep the inter-band elbow routing (4 waypoints)."""
+    fig = load_fixture("multi_compartment_translocation.json")
+    entries = layout_pathway(fig)
+    fig_relations = fig.relations
+    # Find a relation whose endpoints live in different compartments.
+    loc = {e.id: e.location for e in fig.entities}
+    cross = [
+        e for r, e in zip(fig_relations, _arrow_entries(entries))
+        if loc[r.source] != loc[r.target]
+    ]
+    assert cross, "fixture should contain a cross-compartment relation"
+    for e in cross:
+        wps = e.kwargs.get("waypoints")
+        assert wps is not None and len(wps) == 4
+
+
+# ---------------------------------------------------------------------------
+# V2 / L23: cycle-aware DAG ranking (feedback edges no longer break ordering)
+# ---------------------------------------------------------------------------
+
+def _make_mapk_with_feedback() -> Figure:
+    """MAPK cascade with an ERK⊣RAF feedback inhibition edge (cyclic DiGraph)."""
+    return Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="ras", type=EntityType.PROTEIN, label="Ras"),
+            Entity(id="raf", type=EntityType.KINASE, label="Raf"),
+            Entity(id="mek", type=EntityType.KINASE, label="MEK"),
+            Entity(id="erk", type=EntityType.KINASE, label="ERK"),
+        ],
+        relations=[
+            Relation(source="ras", target="raf", type=RelationType.ACTIVATES),
+            Relation(source="raf", target="mek", type=RelationType.PHOSPHORYLATES),
+            Relation(source="mek", target="erk", type=RelationType.PHOSPHORYLATES),
+            Relation(source="erk", target="raf", type=RelationType.INHIBITS),  # feedback
+        ],
+    )
+
+
+def test_feedback_edge_does_not_crash():
+    """A cyclic graph (feedback loop) must not raise during layout."""
+    fig = _make_mapk_with_feedback()
+    entries = layout_pathway(fig)
+    assert len(_arrow_entries(entries)) == 4
+
+
+def test_feedback_edge_preserves_forward_order():
+    """With a feedback edge (ERK⊣RAF), entities should still appear in
+    left-to-right topological order for the forward cascade (L23).
+    Without _feedback_arc_dag the cycle fell back to unconstrained spring,
+    which often settled right-to-left."""
+    fig = _make_mapk_with_feedback()
+    entries = layout_pathway(fig)
+    ent_x = {e.ir_id: e.args[1][0] for e in _entity_entries(entries)}
+    # Forward cascade order must be preserved: Ras→Raf→MEK→ERK (L→R).
+    assert ent_x["ras"] < ent_x["raf"], "Ras should be left of Raf"
+    assert ent_x["raf"] < ent_x["mek"], "Raf should be left of MEK"
+    assert ent_x["mek"] < ent_x["erk"], "MEK should be left of ERK"
+
+
+def test_feedback_arc_dag_returns_dag():
+    """_feedback_arc_dag must produce a DAG regardless of input cycles."""
+    import networkx as nx
+    from imageGen.layout.pathway_layout import _feedback_arc_dag
+
+    cyclic = nx.DiGraph([("a", "b"), ("b", "c"), ("c", "a")])
+    dag = _feedback_arc_dag(cyclic)
+    assert nx.is_directed_acyclic_graph(dag)
+    # Original graph unchanged.
+    assert not nx.is_directed_acyclic_graph(cyclic)
+
+
+def test_feedback_arc_dag_identity_on_dag():
+    """_feedback_arc_dag returns the same object for an already-acyclic graph."""
+    import networkx as nx
+    from imageGen.layout.pathway_layout import _feedback_arc_dag
+
+    acyclic = nx.DiGraph([("a", "b"), ("b", "c")])
+    result = _feedback_arc_dag(acyclic)
+    assert result is acyclic  # same object — no copy

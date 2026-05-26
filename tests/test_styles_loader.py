@@ -14,8 +14,10 @@ from imageGen.styles.loader import (
     DEFAULT_PRESET,
     KNOWN_LAYOUT_PARAMS,
     KNOWN_STYLE_KEYS,
+    PALETTE_RECIPE,
     PRESET_DIR,
     StylePreset,
+    apply_palette_recipe,
     list_presets,
     load_layout_params,
     load_preset_full,
@@ -346,8 +348,194 @@ def test_multiple_unknown_keys_all_reported(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# V2 / ST3: preset inheritance tests
+# ---------------------------------------------------------------------------
+
+def _write_preset(path, name, overrides=None, layout_overrides=None, inherits=None):
+    """Helper: write a minimal valid preset JSON to path."""
+    data = {
+        "meta": {"name": name, "description": "test preset"},
+        "palette": ["#AABBCC"] * 8,
+        "overrides": overrides or {},
+        "layout_overrides": layout_overrides or {},
+    }
+    if inherits is not None:
+        data["inherits"] = inherits
+    path.write_text(json.dumps(data))
+
+
+def test_inheritance_child_inherits_parent_overrides(tmp_path, monkeypatch):
+    """Child preset inherits parent overrides not present in child."""
+    _write_preset(tmp_path / "parent.json", "parent",
+                  overrides={"protein_fill": "#111111", "kinase_fill": "#222222"})
+    _write_preset(tmp_path / "child.json", "child",
+                  overrides={"kinase_fill": "#333333"},
+                  inherits="parent")
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    preset = load_preset_full("child")
+    # kinase_fill: child wins
+    assert preset.overrides["kinase_fill"] == "#333333"
+    # protein_fill: inherited from parent
+    assert preset.overrides["protein_fill"] == "#111111"
+
+
+def test_inheritance_child_wins_on_conflict(tmp_path, monkeypatch):
+    """Child key beats parent key when both define the same override."""
+    _write_preset(tmp_path / "parent.json", "parent",
+                  overrides={"protein_fill": "#AAAAAA"})
+    _write_preset(tmp_path / "child.json", "child",
+                  overrides={"protein_fill": "#BBBBBB"},
+                  inherits="parent")
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    preset = load_preset_full("child")
+    assert preset.overrides["protein_fill"] == "#BBBBBB"
+
+
+def test_inheritance_layout_overrides_merged(tmp_path, monkeypatch):
+    """layout_overrides are also merged (parent base, child wins)."""
+    _write_preset(tmp_path / "parent.json", "parent",
+                  layout_overrides={"pathway_band_fill": "#F0F0F0", "panel_border_stroke": "#CCCCCC"})
+    _write_preset(tmp_path / "child.json", "child",
+                  layout_overrides={"panel_border_stroke": "#000000"},
+                  inherits="parent")
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    preset = load_preset_full("child")
+    assert preset.layout_overrides["pathway_band_fill"] == "#F0F0F0"  # from parent
+    assert preset.layout_overrides["panel_border_stroke"] == "#000000"  # child wins
+
+
+def test_inheritance_palette_is_always_childs(tmp_path, monkeypatch):
+    """palette is identity — child always provides its own, parent's is ignored."""
+    _write_preset(tmp_path / "parent.json", "parent")  # palette #AABBCC
+    child_palette = ["#112233"] * 8
+    (tmp_path / "child.json").write_text(json.dumps({
+        "meta": {"name": "child", "description": "test"},
+        "palette": child_palette,
+        "overrides": {},
+        "inherits": "parent",
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    preset = load_preset_full("child")
+    assert preset.palette == child_palette
+
+
+def test_inheritance_circular_raises(tmp_path, monkeypatch):
+    """Circular inherits chain must raise ValueError."""
+    _write_preset(tmp_path / "a.json", "a", inherits="b")
+    _write_preset(tmp_path / "b.json", "b", inherits="a")
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    with pytest.raises(ValueError, match="[Cc]ircular"):
+        load_preset_full("a")
+
+
+def test_inheritance_missing_parent_raises(tmp_path, monkeypatch):
+    """inherits pointing at a non-existent preset raises FileNotFoundError."""
+    _write_preset(tmp_path / "orphan.json", "orphan", inherits="nonexistent")
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        load_preset_full("orphan")
+
+
+def test_shipped_presets_load_without_inherits_errors():
+    """Shipped presets (no inherits) still load cleanly through new code path."""
+    for name in ["cell_press", "nature", "acs"]:
+        preset = load_preset_full(name)
+        assert preset.inherits is None
+
+
+# ---------------------------------------------------------------------------
 # Render-to-PNG goldens (3 presets × 2 fixtures = 6 files)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# V2 / ST1: palette recipe tests
+# ---------------------------------------------------------------------------
+
+def test_palette_recipe_has_eight_slots():
+    """PALETTE_RECIPE must have exactly 8 slots matching palette length."""
+    assert len(PALETTE_RECIPE) == 8
+
+
+def test_palette_recipe_all_known_style_keys():
+    """Every key in PALETTE_RECIPE must exist in KNOWN_STYLE_KEYS."""
+    unknown = [k for slot in PALETTE_RECIPE for k in slot if k not in KNOWN_STYLE_KEYS]
+    assert not unknown, f"Unknown keys in PALETTE_RECIPE: {unknown}"
+
+
+def test_apply_palette_recipe_default():
+    """apply_palette_recipe maps palette colours to the default recipe keys."""
+    palette = ["#AABBCC"] * 8
+    result = apply_palette_recipe(palette)
+    # slot 0 → protein_fill
+    assert result["protein_fill"] == "#AABBCC"
+    # slot 1 → kinase_fill
+    assert result["kinase_fill"] == "#AABBCC"
+
+
+def test_apply_palette_recipe_distinct_colours():
+    """Each slot's colour reaches only its own keys."""
+    palette = [f"#00{i:02X}00" for i in range(8)]
+    result = apply_palette_recipe(palette)
+    for i, slot in enumerate(PALETTE_RECIPE):
+        for key in slot:
+            assert result[key] == palette[i], f"slot {i} key {key!r} mismatch"
+
+
+def test_apply_palette_recipe_custom_recipe():
+    """A custom recipe overrides the default mapping."""
+    palette = ["#FF0000"] * 8
+    recipe: list[list[str]] = [["receptor_fill"]] + [[]] * 7
+    result = apply_palette_recipe(palette, recipe)
+    assert result == {"receptor_fill": "#FF0000"}
+
+
+def test_load_style_includes_recipe_derived_fills():
+    """load_style must include recipe-derived fills alongside explicit overrides."""
+    style = load_style("cell_press")
+    # protein_fill is in both recipe and explicit overrides — should be present
+    assert "protein_fill" in style
+
+
+def test_explicit_overrides_win_over_recipe(tmp_path, monkeypatch):
+    """Explicit overrides must supersede recipe-derived values."""
+    custom = tmp_path / "custom.json"
+    custom.write_text(json.dumps({
+        "meta": {"name": "custom", "description": "test"},
+        "palette": ["#111111"] * 8,  # recipe would set protein_fill=#111111
+        "overrides": {"protein_fill": "#ABCDEF"},  # override wins
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    style = load_style("custom")
+    assert style["protein_fill"] == "#ABCDEF"
+
+
+def test_preset_palette_recipe_field_accepted(tmp_path, monkeypatch):
+    """A preset with a custom palette_recipe field must load without error."""
+    custom = tmp_path / "recipe_preset.json"
+    custom.write_text(json.dumps({
+        "meta": {"name": "recipe_preset", "description": "test"},
+        "palette": ["#AABB00"] * 8,
+        "palette_recipe": [["protein_fill"]] + [[]] * 7,
+        "overrides": {},
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    style = load_style("recipe_preset")
+    assert style["protein_fill"] == "#AABB00"
+
+
+def test_palette_recipe_wrong_length_raises(tmp_path, monkeypatch):
+    """A palette_recipe with ≠ 8 slots must raise ValidationError."""
+    bad = tmp_path / "bad_recipe.json"
+    bad.write_text(json.dumps({
+        "meta": {"name": "bad_recipe", "description": "test"},
+        "palette": ["#000000"] * 8,
+        "palette_recipe": [["protein_fill"]] * 4,  # only 4 slots, not 8
+        "overrides": {},
+    }))
+    monkeypatch.setattr("imageGen.styles.loader.PRESET_DIR", tmp_path)
+    with pytest.raises(Exception):
+        load_preset_full("bad_recipe")
+
 
 @pytest.mark.parametrize("preset", ["cell_press", "nature", "acs"])
 def test_render_mapk_with_preset(preset):

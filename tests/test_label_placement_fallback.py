@@ -78,6 +78,23 @@ def test_pass3_nudges_anchor_when_shrink_blocked():
     assert center[0] < 107.0
 
 
+def test_pass3_5_large_nudge_escapes_wide_node(tmp_path=None):
+    """A blocker that covers small nudges (±8 px) but clears at ±24 px is
+    escaped by the L24 large-nudge rung (Pass 3.5) without overlap."""
+    req = LabelRequest(text="at Ser", anchor=(200, 200), anchor_size=(2, 2),
+                       priority=("above",))
+    # Block the in-place and small-nudge slots: a rect from y=170 to y=210
+    # that overlaps "above" at y≈189 and the ±8 nudge variants (y≈181–197),
+    # but leaves the y≈176 region free for the ±24 nudge.
+    occupied = [(150.0, 170.0, 260.0, 210.0)]
+    center, _bbox, font_used, overlap = _place_with_fallback(
+        req, occupied, _GAP, _MARGIN, _FONT
+    )
+    assert overlap is False
+    # The center must be above the blocker (y < 170) — large nudge escaped it.
+    assert center[1] < 170.0
+
+
 def test_pass4_last_resort_overlap_when_boxed_in():
     """Everything around the anchor is occupied → last-resort placement with
     the overlap flag set (Pass 4)."""
@@ -96,7 +113,12 @@ def test_pass4_last_resort_overlap_when_boxed_in():
 
 
 def test_place_labels_emits_overlap_kwarg_and_warns():
-    """A boxed-in request placed leniently carries overlap=True and warns."""
+    """A boxed-in request placed leniently carries overlap=True and warns.
+
+    L24 added _LARGE_NUDGES (±24, ±40 px) to the fallback ladder.  Passing a
+    near-zero canvas forces every candidate position out-of-bounds so even the
+    large-nudge rung cannot escape and the last-resort overlap path fires.
+    """
     blocker = LayoutEntry(
         primitive=proteins.generic_protein,
         args=("Blk", (300, 300)),
@@ -104,10 +126,26 @@ def test_place_labels_emits_overlap_kwarg_and_warns():
         position=(0.0, 0.0),
     )
     req = LabelRequest(text="boxed", anchor=(300, 300), anchor_size=(2, 2))
+    # canvas=(1, 1): anchor at (300, 300) is far outside [0,1]×[0,1], so
+    # every candidate bbox is filtered as out-of-bounds → last-resort overlap.
     with pytest.warns(UserWarning, match="overlap"):
-        out = place_labels([blocker], [req])
+        out = place_labels([blocker], [req], canvas=(1.0, 1.0))
     label = next(e for e in out if e.primitive is _label_primitive)
     assert label.kwargs.get("overlap") is True
+
+
+def test_strict_labels_raises_on_out_of_bounds_canvas():
+    """strict_labels=True raises when every candidate is out of bounds."""
+    from imageGen.layout.label_placement import LabelPlacementError
+    blocker = LayoutEntry(
+        primitive=proteins.generic_protein,
+        args=("Blk", (300, 300)),
+        kwargs={},
+        position=(0.0, 0.0),
+    )
+    req = LabelRequest(text="label", anchor=(300, 300), anchor_size=(2, 2))
+    with pytest.raises(LabelPlacementError):
+        place_labels([blocker], [req], canvas=(1.0, 1.0), strict_labels=True)
 
 
 # ---------------------------------------------------------------------------
