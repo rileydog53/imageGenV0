@@ -45,7 +45,7 @@ from typing import Iterator, Literal
 
 from imageGen.ir.schema import Archetype, Figure, RelationType
 from imageGen.layout._geom import ENTITY_TO_PRIMITIVE
-from imageGen.primitives import proteins
+from imageGen.primitives import nucleic_acids, proteins
 from imageGen.render.compositor import scoped_id
 
 _Kind = Literal["inhibition_arrow", "entity_shape"]
@@ -53,7 +53,7 @@ _Kind = Literal["inhibition_arrow", "entity_shape"]
 # SVG tags that count as an entity's primary shape, matched in the order
 # the primitives emit children — the shape glyph is always drawn before
 # any badge (e.g. a phosphorylated-kinase ``<circle>``) or ``<text>`` label.
-_SHAPE_TAGS = ("rect", "polygon", "ellipse", "circle", "path")
+_SHAPE_TAGS = ("rect", "polygon", "ellipse", "circle", "path", "polyline")
 
 # Primitive callable → the SVG tag of the shape it draws. `_geom` owns the
 # `EntityType → primitive` mapping; this owns `primitive → shape tag`.
@@ -63,6 +63,7 @@ _PRIMITIVE_SHAPE = {
     proteins.receptor: "polygon",
     proteins.gpcr: "rect",
     proteins.transcription_factor: "rect",
+    nucleic_acids.gene_helix: "polyline",
 }
 
 

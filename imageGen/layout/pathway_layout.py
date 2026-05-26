@@ -54,6 +54,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import warnings
+
 import networkx as nx
 import svgwrite.container
 import svgwrite.path
@@ -69,7 +71,13 @@ from imageGen.ir.schema import (
     Figure,
     RelationType,
 )
-from imageGen.layout._geom import ENTITY_BBOX, ENTITY_TO_PRIMITIVE, max_entity_bbox
+from imageGen.layout._geom import (
+    ENTITY_BBOX,
+    ENTITY_TO_PRIMITIVE,
+    PRIMITIVE_REGISTRY,
+    PRIMITIVE_TO_BBOX,
+    max_entity_bbox,
+)
 from imageGen.layout.types import LayoutEntry
 from imageGen.primitives import arrows
 from imageGen.primitives._text import centered_label as _centered_label
@@ -123,6 +131,46 @@ PATHWAY_DEFAULT_PARAMS: dict[str, Any] = {
 
 _BAND_BASELINE = 100.0   # px — matches v1: 600 / 6 bands = 100 px/band
 _LABEL_MARGIN  =  40.0   # px — headroom for band label + top/bottom breathing room
+
+
+def _feedback_arc_dag(dg: nx.DiGraph) -> nx.DiGraph:
+    """Return a DAG derived from *dg* by removing back-edges (DFS cycles).
+
+    When *dg* is already a DAG this returns the same object unchanged (no
+    copy). For cyclic graphs — feedback loops like ERK⊣RAF in a MAPK cascade
+    — back-edges are stripped one at a time (the last edge of each detected
+    cycle) until the graph is acyclic. The result is used only for
+    topological seeding and sibling-spread; all original edges remain in
+    `figure.relations` for arrow routing so feedback arrows are still drawn.
+    """
+    if nx.is_directed_acyclic_graph(dg):
+        return dg
+    dag = dg.copy()
+    while not nx.is_directed_acyclic_graph(dag):
+        try:
+            cycle = nx.find_cycle(dag)
+            dag.remove_edge(*cycle[-1][:2])
+        except nx.NetworkXNoCycle:
+            break
+    return dag
+
+
+def _max_topo_siblings(figure: Figure) -> int:
+    """Return the max number of nodes sharing a topological rank in `figure`.
+
+    Used by L20 to size the implicit-band height so vertically-spread siblings
+    never clip each other. Returns 1 for non-DAGs or figures without edges
+    (falls back to the normal BAND_BASELINE height in those cases).
+    """
+    if not figure.relations:
+        return 1
+    DG = nx.DiGraph()
+    for e in figure.entities:
+        DG.add_node(e.id)
+    for r in figure.relations:
+        DG.add_edge(r.source, r.target)
+    dag = _feedback_arc_dag(DG)
+    return max((len(list(gen)) for gen in nx.topological_generations(dag)), default=1)
 
 
 def _compute_band_heights(
@@ -182,8 +230,11 @@ def compute_pathway_canvas(
     row_v_gap   = float(params["pathway_row_v_gap"])
     scale       = float(params["pathway_entity_scale"])
 
-    _, raw_max_h = max_entity_bbox(figure)
+    raw_max_w, raw_max_h = max_entity_bbox(figure)
+    max_entity_w = raw_max_w * scale
     max_entity_h = raw_max_h * scale
+    padding     = float(params["pathway_band_padding"])
+    edge_margin = float(params["pathway_edge_margin"])
 
     compartments, location_map = _resolve_compartments(figure)
     by_band: dict[str, list] = {}
@@ -196,7 +247,30 @@ def compute_pathway_canvas(
         row_v_gap=row_v_gap,
         max_entity_h=max_entity_h,
     )
-    return (float(min_w), max(len(heights) * _BAND_BASELINE, sum(heights)))
+
+    # L20: for single-implicit-band figures, ensure the band is tall enough
+    # to vertically spread the widest sibling group without overlap.
+    if len(compartments) == 1 and compartments[0].id == _IMPLICIT_COMPARTMENT_ID:
+        max_sibs = _max_topo_siblings(figure)
+        if max_sibs > 1:
+            edge_margin = float(params["pathway_edge_margin"])
+            l20_h = max_sibs * (max_entity_h + row_v_gap) + _LABEL_MARGIN + 2 * edge_margin
+            heights = [max(heights[0], l20_h)]
+
+    # L21: required width = widest row across all bands.
+    # Each row of n_cols entities needs: 2*padding + n_cols*entity_w
+    # + (n_cols-1)*inter_gap.  inter_gap = 2*edge_margin so the spacing
+    # scales with the same knob that clamps entity bboxes to the canvas edge.
+    inter_gap = max(2.0 * edge_margin, 20.0)
+    required_w = float(min_w)
+    for ents in by_band.values():
+        n_cols = min(len(ents), max_per_row)
+        if n_cols < 1:
+            continue
+        row_w = 2.0 * padding + n_cols * max_entity_w + (n_cols - 1) * inter_gap
+        required_w = max(required_w, row_w)
+
+    return (required_w, max(len(heights) * _BAND_BASELINE, sum(heights)))
 
 
 # ---------------------------------------------------------------------------
@@ -419,12 +493,16 @@ def _graph_positions(
         G.add_edge(r.source, r.target)
         DG.add_edge(r.source, r.target)
 
-    # For DAGs, seed spring_layout with topological-rank x positions so
-    # left-to-right order reflects the actual flow direction (A→B→C instead
-    # of a U-shape). Falls back to unconstrained spring when cycles exist.
+    # Seed spring_layout with topological-rank x positions so left-to-right
+    # order reflects the actual flow direction (A→B→C instead of a U-shape).
+    # L23: for cyclic graphs (feedback edges like ERK⊣RAF), _feedback_arc_dag
+    # strips back-edges first, so a cycle no longer falls back to unconstrained
+    # spring and renders the cascade backwards.
+    _dag_for_ranking: nx.DiGraph | None = None
     init_pos: dict | None = None
-    if G.number_of_edges() and nx.is_directed_acyclic_graph(DG):
-        generations = list(nx.topological_generations(DG))
+    if G.number_of_edges():
+        _dag_for_ranking = _feedback_arc_dag(DG)
+        generations = list(nx.topological_generations(_dag_for_ranking))
         max_rank = max(len(generations) - 1, 1)
         init_pos = {}
         for rank, gen in enumerate(generations):
@@ -454,6 +532,25 @@ def _graph_positions(
     for e in figure.entities:
         by_band.setdefault(location_map[e.id], []).append(e)
 
+    # L20: when the figure has a single implicit compartment (no real spatial
+    # context), spread entities vertically by their position among siblings at
+    # the same topological rank — hub (N→1), branch (1→N), and convergence
+    # topologies otherwise collapse to a flat row because every entity gets
+    # the same center_y. When real compartments exist, band-snap is preserved.
+    use_topo_y_mode = len(bands) == 1 and _IMPLICIT_COMPARTMENT_ID in bands
+
+    # Precompute normalised [0,1] y position per entity from topological sibling
+    # index. For DAGs: entities in the same generation are evenly spread across
+    # [0,1]; a lone node in its generation is centred at 0.5. For non-DAGs (or
+    # when there are no edges) this dict is empty and we fall back to center_y.
+    topo_y: dict[str, float] = {}
+    if use_topo_y_mode and _dag_for_ranking is not None:
+        for gen in nx.topological_generations(_dag_for_ranking):
+            gen_list = sorted(gen)  # sort by id for determinism
+            n_sibs = len(gen_list)
+            for i, node in enumerate(gen_list):
+                topo_y[node] = (i + 0.5) / n_sibs
+
     pos: dict[str, tuple[float, float]] = {}
     for band_id, ents in by_band.items():
         band_top, band_bottom = bands[band_id]
@@ -466,6 +563,7 @@ def _graph_positions(
         )
         n = len(sorted_ents)
         n_rows = max(1, (n + max_per_row - 1) // max_per_row)
+
         for i, e in enumerate(sorted_ents):
             row = i // max_per_row
             col = i % max_per_row
@@ -475,16 +573,28 @@ def _graph_positions(
                 x = ox + w / 2
             else:
                 x = ox + padding + inner_w * col / (cols_in_row - 1)
-            # Stack rows vertically, centered around the band center.
-            y_offset = (row - (n_rows - 1) / 2) * (row_h + row_v_gap)
             # L15: clamp centers so entity bboxes stay inside the canvas.
             ew, eh = _sizes.get(e.type, (30.0, 30.0))
             x = max(ox + edge_margin + ew / 2, min(x, ox + w - edge_margin - ew / 2))
-            raw_y = center_y + y_offset
-            y = max(
-                band_top + edge_margin + eh / 2,
-                min(raw_y, band_bottom - edge_margin - eh / 2),
-            )
+
+            # L20: use topological sibling y in single-implicit-band mode.
+            # Only fires for single-row bands in DAG figures with ≥2 siblings
+            # at some rank (topo_y maps those nodes to non-centre t values).
+            if use_topo_y_mode and n_rows == 1 and e.id in topo_y:
+                usable_top    = band_top    + edge_margin + eh / 2
+                usable_bottom = band_bottom - edge_margin - eh / 2
+                if usable_bottom > usable_top:
+                    y = usable_top + topo_y[e.id] * (usable_bottom - usable_top)
+                else:
+                    y = center_y
+            else:
+                # Stack rows vertically, centered around the band center.
+                y_offset = (row - (n_rows - 1) / 2) * (row_h + row_v_gap)
+                raw_y = center_y + y_offset
+                y = max(
+                    band_top + edge_margin + eh / 2,
+                    min(raw_y, band_bottom - edge_margin - eh / 2),
+                )
             pos[e.id] = (x, y)
     return pos
 
@@ -971,8 +1081,27 @@ def layout_pathway(
             row_v_gap=float(params["pathway_row_v_gap"]),
             max_entity_h=max_entity_h,
         )
+        # L20: grow single-implicit-band height for hub/branch topologies.
+        if len(compartments) == 1 and compartments[0].id == _IMPLICIT_COMPARTMENT_ID:
+            max_sibs = _max_topo_siblings(figure)
+            if max_sibs > 1:
+                l20_h = (max_sibs * (max_entity_h + float(params["pathway_row_v_gap"]))
+                         + _LABEL_MARGIN + 2.0 * float(params["pathway_edge_margin"]))
+                per_band_heights = [max(per_band_heights[0], l20_h)]
         total_h = max(canvas[1], sum(per_band_heights))
-        canvas = (canvas[0], total_h)
+        # L21: grow width to fit the widest entity row (mirrors compute_pathway_canvas).
+        max_entity_w = max(effective_bbox[e.type][0] for e in figure.entities)
+        inter_gap = max(2.0 * float(params["pathway_edge_margin"]), 20.0)
+        required_w = canvas[0]
+        for ents_list in by_band_for_heights.values():
+            n_cols = min(len(ents_list), int(params["pathway_max_per_row"]))
+            if n_cols < 1:
+                continue
+            row_w = (2.0 * float(params["pathway_band_padding"])
+                     + n_cols * max_entity_w
+                     + (n_cols - 1) * inter_gap)
+            required_w = max(required_w, row_w)
+        canvas = (required_w, total_h)
 
     bands = _compute_bands(compartments, canvas, origin, band_heights=per_band_heights)
     positions = _graph_positions(
@@ -1017,12 +1146,36 @@ def layout_pathway(
         ))
 
     for e in figure.entities:
-        # V2 / L9: forward effective size explicitly so primitives render at
-        # the scaled dimensions. Merged after style_kwargs so the size kwarg
-        # is always present regardless of whether a style_dict was supplied.
-        entity_kwargs = {**style_kwargs, "size": effective_bbox[e.type]}
+        # V2 / L6: per-entity primitive override via entity.style["primitive"].
+        prim_override_name = (e.style or {}).get("primitive")
+        if prim_override_name is not None:
+            override_prim = PRIMITIVE_REGISTRY.get(prim_override_name)
+            if override_prim is None:
+                warnings.warn(
+                    f"Entity {e.id!r}: unknown primitive override "
+                    f"{prim_override_name!r}; using default for type "
+                    f"{e.type.value!r}. Known primitives: "
+                    f"{sorted(PRIMITIVE_REGISTRY)}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                override_prim = ENTITY_TO_PRIMITIVE[e.type]
+        else:
+            override_prim = ENTITY_TO_PRIMITIVE[e.type]
+
+        # Size: use the override primitive's canonical bbox when overriding,
+        # otherwise use the entity-type bbox (already scaled by L9 factor).
+        if prim_override_name is not None and override_prim is not ENTITY_TO_PRIMITIVE[e.type]:
+            size = PRIMITIVE_TO_BBOX.get(override_prim, effective_bbox[e.type])
+        else:
+            # V2 / L9: forward effective size explicitly so primitives render at
+            # the scaled dimensions. Merged after style_kwargs so the size kwarg
+            # is always present regardless of whether a style_dict was supplied.
+            size = effective_bbox[e.type]
+
+        entity_kwargs = {**style_kwargs, "size": size}
         entries.append(_entry(
-            ENTITY_TO_PRIMITIVE[e.type],
+            override_prim,
             (e.label, positions[e.id]),
             entity_kwargs,
             ir_id=e.id,
@@ -1131,4 +1284,28 @@ def pathway_label_requests(
             priority=priority,
             ir_id=relation.ir_id,
         ))
+
+    # V2 / L5: entity sublabels — text anchored to entity bbox, placed below
+    # first (avoids arrow shafts which run beside / above most entities).
+    _entity_prim_set = frozenset(PRIMITIVE_REGISTRY.values())
+    entity_entry_by_id = {
+        e.ir_id: e for e in entries if e.primitive in _entity_prim_set
+    }
+    for entity in figure.entities:
+        sublabel = (entity.style or {}).get("sublabel")
+        if not sublabel:
+            continue
+        entry = entity_entry_by_id.get(entity.id)
+        if entry is None:
+            continue
+        cx, cy = entry.args[1]
+        size = entry.kwargs.get("size", ENTITY_BBOX.get(entity.type, (60.0, 30.0)))
+        requests.append(LabelRequest(
+            text=sublabel,
+            anchor=(cx, cy),
+            anchor_size=size,
+            priority=("below", "above", "right", "left", "center"),
+            ir_id=f"{entity.id}_sublabel",
+        ))
+
     return requests

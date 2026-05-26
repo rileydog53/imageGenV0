@@ -775,3 +775,69 @@ def test_cross_band_arrow_still_uses_corridor():
     for e in cross:
         wps = e.kwargs.get("waypoints")
         assert wps is not None and len(wps) == 4
+
+
+# ---------------------------------------------------------------------------
+# V2 / L23: cycle-aware DAG ranking (feedback edges no longer break ordering)
+# ---------------------------------------------------------------------------
+
+def _make_mapk_with_feedback() -> Figure:
+    """MAPK cascade with an ERK⊣RAF feedback inhibition edge (cyclic DiGraph)."""
+    return Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="ras", type=EntityType.PROTEIN, label="Ras"),
+            Entity(id="raf", type=EntityType.KINASE, label="Raf"),
+            Entity(id="mek", type=EntityType.KINASE, label="MEK"),
+            Entity(id="erk", type=EntityType.KINASE, label="ERK"),
+        ],
+        relations=[
+            Relation(source="ras", target="raf", type=RelationType.ACTIVATES),
+            Relation(source="raf", target="mek", type=RelationType.PHOSPHORYLATES),
+            Relation(source="mek", target="erk", type=RelationType.PHOSPHORYLATES),
+            Relation(source="erk", target="raf", type=RelationType.INHIBITS),  # feedback
+        ],
+    )
+
+
+def test_feedback_edge_does_not_crash():
+    """A cyclic graph (feedback loop) must not raise during layout."""
+    fig = _make_mapk_with_feedback()
+    entries = layout_pathway(fig)
+    assert len(_arrow_entries(entries)) == 4
+
+
+def test_feedback_edge_preserves_forward_order():
+    """With a feedback edge (ERK⊣RAF), entities should still appear in
+    left-to-right topological order for the forward cascade (L23).
+    Without _feedback_arc_dag the cycle fell back to unconstrained spring,
+    which often settled right-to-left."""
+    fig = _make_mapk_with_feedback()
+    entries = layout_pathway(fig)
+    ent_x = {e.ir_id: e.args[1][0] for e in _entity_entries(entries)}
+    # Forward cascade order must be preserved: Ras→Raf→MEK→ERK (L→R).
+    assert ent_x["ras"] < ent_x["raf"], "Ras should be left of Raf"
+    assert ent_x["raf"] < ent_x["mek"], "Raf should be left of MEK"
+    assert ent_x["mek"] < ent_x["erk"], "MEK should be left of ERK"
+
+
+def test_feedback_arc_dag_returns_dag():
+    """_feedback_arc_dag must produce a DAG regardless of input cycles."""
+    import networkx as nx
+    from imageGen.layout.pathway_layout import _feedback_arc_dag
+
+    cyclic = nx.DiGraph([("a", "b"), ("b", "c"), ("c", "a")])
+    dag = _feedback_arc_dag(cyclic)
+    assert nx.is_directed_acyclic_graph(dag)
+    # Original graph unchanged.
+    assert not nx.is_directed_acyclic_graph(cyclic)
+
+
+def test_feedback_arc_dag_identity_on_dag():
+    """_feedback_arc_dag returns the same object for an already-acyclic graph."""
+    import networkx as nx
+    from imageGen.layout.pathway_layout import _feedback_arc_dag
+
+    acyclic = nx.DiGraph([("a", "b"), ("b", "c")])
+    result = _feedback_arc_dag(acyclic)
+    assert result is acyclic  # same object — no copy

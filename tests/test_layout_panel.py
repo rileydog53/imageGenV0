@@ -60,7 +60,8 @@ def test_empty_panels_raises():
         layout_panel(fig)
 
 
-def test_nested_panels_raise_not_implemented():
+def test_nested_panels_recurse_without_raising():
+    """V2/L10: a panel whose content itself has panels must recurse, not raise."""
     inner = Figure(archetype=Archetype.WORKFLOW, panels=[
         Panel(id="inner", grid=(0, 0, 1, 1), content=Figure(
             archetype=Archetype.PATHWAY,
@@ -70,8 +71,8 @@ def test_nested_panels_raise_not_implemented():
     outer = Figure(archetype=Archetype.WORKFLOW, panels=[
         Panel(id="outer", grid=(0, 0, 1, 1), content=inner),
     ])
-    with pytest.raises(NotImplementedError, match="Nested"):
-        layout_panel(outer)
+    entries = layout_panel(outer)
+    assert entries, "Expected non-empty entries for nested panel layout"
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +218,96 @@ def test_style_dict_forwarded_to_subengines():
 
 
 # ---------------------------------------------------------------------------
+# V2 / L10: nested panel grids
+# ---------------------------------------------------------------------------
+
+def _nested_figure(n_inner: int = 2) -> Figure:
+    """Outer 1-panel figure whose sole panel contains an n-panel inner grid."""
+    inner_panels = [
+        Panel(
+            id=f"inner_{i}",
+            grid=(0, i, 1, 1),
+            content=Figure(
+                archetype=Archetype.PATHWAY,
+                entities=[Entity(id=f"e{i}", type=EntityType.GENERIC, label=f"E{i}")],
+            ),
+        )
+        for i in range(n_inner)
+    ]
+    inner = Figure(archetype=Archetype.WORKFLOW, panels=inner_panels)
+    return Figure(
+        archetype=Archetype.WORKFLOW,
+        panels=[Panel(id="outer", grid=(0, 0, 1, 1), content=inner)],
+    )
+
+
+def test_nested_panels_returns_nonempty_entries():
+    """Nested grid must produce a flat list of entries (not raise)."""
+    entries = layout_panel(_nested_figure())
+    assert len(entries) > 0
+
+
+def test_nested_panels_all_entries_executable():
+    """Every entry from a nested layout must be callable and return a Group."""
+    entries = layout_panel(_nested_figure())
+    for entry in entries:
+        g = entry.primitive(*entry.args, **entry.kwargs)
+        assert isinstance(g, svgwrite.container.Group)
+
+
+def test_nested_panels_inner_panel_chains_scoped():
+    """Inner panel entries must carry panel_chain starting with outer panel id."""
+    entries = layout_panel(_nested_figure())
+    non_chrome = [e for e in entries if e.primitive is not _panel_chrome]
+    for entry in non_chrome:
+        assert entry.panel_chain[0] == "outer", (
+            f"Expected panel_chain[0]='outer', got {entry.panel_chain}"
+        )
+
+
+def test_nested_panels_inner_chrome_entries_scoped():
+    """Inner chrome entries must have outer id in their panel_chain."""
+    entries = layout_panel(_nested_figure())
+    inner_chromes = [
+        e for e in entries
+        if e.primitive is _panel_chrome and "outer" in e.panel_chain
+    ]
+    assert len(inner_chromes) >= 1
+
+
+def test_nested_panels_three_deep():
+    """Three levels of nesting must resolve without error."""
+    leaf = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[Entity(id="z", type=EntityType.GENERIC, label="Z")],
+    )
+    level2 = Figure(archetype=Archetype.WORKFLOW, panels=[
+        Panel(id="l2", grid=(0, 0, 1, 1), content=leaf),
+    ])
+    level1 = Figure(archetype=Archetype.WORKFLOW, panels=[
+        Panel(id="l1", grid=(0, 0, 1, 1), content=level2),
+    ])
+    root = Figure(archetype=Archetype.WORKFLOW, panels=[
+        Panel(id="root", grid=(0, 0, 1, 1), content=level1),
+    ])
+    entries = layout_panel(root)
+    assert entries
+
+
+def test_nested_panels_leaf_positions_inside_outer_cell():
+    """Non-chrome leaf entries must have positions within the outer panel bounds."""
+    fig = _nested_figure(n_inner=1)
+    entries = layout_panel(fig, layout_params={"panel_canvas": (600.0, 400.0), "panel_margin": 10.0})
+    outer_chrome = next(e for e in entries if e.primitive is _panel_chrome and "outer" in (e.ir_id or ""))
+    _, ox, oy, ow, oh = outer_chrome.args
+    non_chrome = [e for e in entries if e.primitive is not _panel_chrome]
+    for entry in non_chrome:
+        px, py = entry.position
+        assert ox <= px <= ox + ow, f"entry x={px} outside outer panel [{ox}, {ox+ow}]"
+        assert oy <= py <= oy + oh, f"entry y={py} outside outer panel [{oy}, {oy+oh}]"
+
+
+# ---------------------------------------------------------------------------
 # LayoutEntry shape
 # ---------------------------------------------------------------------------
 
@@ -242,3 +333,88 @@ def test_render_three_panel_workflow_to_png():
     entries = layout_panel(fig)
     out = render_entries_to_png(entries, "layout_panel_three_workflow.png", canvas=(1200, 600))
     assert out.exists() and out.stat().st_size > 0
+
+
+# ---------------------------------------------------------------------------
+# V2 / L12: title alignment and multi-line titles
+# ---------------------------------------------------------------------------
+
+def test_chrome_default_align_is_left():
+    """Default panel_title_align must be 'left'."""
+    assert PANEL_DEFAULT_PARAMS["panel_title_align"] == "left"
+
+
+def test_chrome_left_align_text_anchor():
+    """Left alignment produces text-anchor=start in the SVG group."""
+    g = _panel_chrome("Title", 0.0, 0.0, 200.0, 100.0, {**PANEL_DEFAULT_PARAMS})
+    svg_str = g.tostring()
+    assert 'text-anchor="start"' in svg_str or "text-anchor: start" in svg_str
+
+
+def test_chrome_center_align_text_anchor():
+    """Center alignment produces text-anchor=middle in the SVG group."""
+    params = {**PANEL_DEFAULT_PARAMS, "panel_title_align": "center"}
+    g = _panel_chrome("Title", 0.0, 0.0, 200.0, 100.0, params)
+    svg_str = g.tostring()
+    assert 'text-anchor="middle"' in svg_str or "text-anchor: middle" in svg_str
+
+
+def test_chrome_right_align_text_anchor():
+    """Right alignment produces text-anchor=end in the SVG group."""
+    params = {**PANEL_DEFAULT_PARAMS, "panel_title_align": "right"}
+    g = _panel_chrome("Title", 0.0, 0.0, 200.0, 100.0, params)
+    svg_str = g.tostring()
+    assert 'text-anchor="end"' in svg_str or "text-anchor: end" in svg_str
+
+
+def test_chrome_center_align_x_is_panel_midpoint():
+    """Center-aligned title insert-x must equal panel x + w/2."""
+    params = {**PANEL_DEFAULT_PARAMS, "panel_title_align": "center"}
+    g = _panel_chrome("Title", 10.0, 0.0, 200.0, 100.0, params)
+    svg_str = g.tostring()
+    # The text insert x should be 10 + 100 = 110.
+    assert "110" in svg_str
+
+
+def test_chrome_right_align_x_is_near_right_edge():
+    """Right-aligned title insert-x must equal panel x + w - 8."""
+    params = {**PANEL_DEFAULT_PARAMS, "panel_title_align": "right"}
+    g = _panel_chrome("Title", 0.0, 0.0, 200.0, 100.0, params)
+    svg_str = g.tostring()
+    # x = 0 + 200 - 8 = 192
+    assert "192" in svg_str
+
+
+def test_chrome_multiline_title_emits_tspans():
+    """A title with \\n must produce tspan elements (one per line)."""
+    g = _panel_chrome("Line 1\nLine 2", 0.0, 0.0, 200.0, 100.0, {**PANEL_DEFAULT_PARAMS})
+    svg_str = g.tostring()
+    assert svg_str.count("<tspan") >= 2
+
+
+def test_chrome_multiline_contains_both_lines():
+    """Both lines of a multi-line title must appear in the SVG output."""
+    g = _panel_chrome("Alpha\nBeta", 0.0, 0.0, 200.0, 100.0, {**PANEL_DEFAULT_PARAMS})
+    svg_str = g.tostring()
+    assert "Alpha" in svg_str
+    assert "Beta" in svg_str
+
+
+def test_chrome_single_line_no_tspan_or_one_tspan():
+    """A single-line title produces exactly one tspan (or the text element directly)."""
+    g = _panel_chrome("Solo", 0.0, 0.0, 200.0, 100.0, {**PANEL_DEFAULT_PARAMS})
+    svg_str = g.tostring()
+    assert "Solo" in svg_str
+
+
+def test_layout_panel_align_param_reaches_chrome():
+    """panel_title_align passed via layout_params reaches the chrome primitive."""
+    fig = _make_workflow_figure(n_panels=1)
+    entries = layout_panel(fig, layout_params={"panel_title_align": "center"})
+    chrome = _chrome_entries(entries)[0]
+    # chrome args: (title, x, y, w, h); params are inside kwargs
+    params = chrome.kwargs.get("params", chrome.args[-1] if len(chrome.args) > 5 else {})
+    # Render and check SVG contains middle anchor
+    g = chrome.primitive(*chrome.args, **chrome.kwargs)
+    svg_str = g.tostring()
+    assert "middle" in svg_str

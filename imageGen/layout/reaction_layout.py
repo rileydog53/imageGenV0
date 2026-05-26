@@ -30,10 +30,11 @@ v1 limitations (explicit gaps; not oversights):
     arrow primitive draws single-direction only. Honor this once
     chemistry exposes a reversible-arrow option.
   - Multi-step reactions (an entity that is both source and target of
-    different relations -- an intermediate) raise NotImplementedError
-    when this engine is called directly. The compositor (R3) detects
-    them up front and routes the figure through pathway_layout instead,
-    so end-to-end rendering of a chain (A→B→C) succeeds as a pathway.
+    different relations -- an intermediate) are rendered as a molecule
+    sequence (m0 → m1 → … → mn) when the relation graph is a single linear
+    chain (V2/R6, via `render_multistep_reaction`). Non-linear multi-step
+    graphs (branching / convergence / cycles) still raise NotImplementedError;
+    the compositor routes those through pathway_layout instead.
   - Per-molecule annotations / compound numbers are deferred to
     label_placement.py paired with a v2 of this engine that decomposes
     into per-molecule LayoutEntry items.
@@ -46,13 +47,14 @@ Phase 5 coupling:
 """
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import svgwrite.container
 
 from imageGen.ir.schema import Archetype, Figure, ReactionConditions
 from imageGen.layout.types import LayoutEntry
-from imageGen.primitives.chemistry import render_reaction
+from imageGen.primitives.chemistry import render_multistep_reaction, render_reaction
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,7 @@ REACTION_DEFAULT_PARAMS: dict[str, Any] = {
     "reaction_canvas":        (800.0, 300.0),  # SVG viewport for compositor (Phase 5)
     "reaction_max_width":     800.0,        # V2/R1: total px before switching to stacked layout
     "reaction_stacked_row_gap": 24.0,       # V2/R1: vertical gap between stacked rows
+    "reaction_molecule_min_width": 60.0,    # V2/P2: floor for auto-shrunk molecule width
 }
 
 # A REACTION_SCHEME renders as a single composite group (molecules are
@@ -106,28 +109,32 @@ def _classify_entities(figure: Figure) -> tuple[list[str], list[str]]:
 
 
 def _extract_conditions(figure: Figure) -> dict[str, str] | None:
-    """Map the first relation's ReactionConditions to render_reaction's dict.
+    """Merge ReactionConditions from all relations into render_reaction's dict.
 
-    Returns {"above": str, "below": str} with either or both keys present,
-    or None if no relation in the figure carries conditions. Multi-relation
-    conditions (different per-arrow conditions) is a v2 concern; v1 picks
-    the first relation that has any.
+    V2 / R5: honors each relation's conditions independently:
+      - ``above`` key: union of all reagents lists, comma-separated.
+      - ``below`` key: all notes / yield strings, semicolon-separated.
+    Returns None when no relation carries any conditions.
     """
+    all_reagents: list[str] = []
+    all_below: list[str] = []
     for relation in figure.relations:
         c = relation.conditions
         if c is None:
             continue
         if isinstance(c, dict):
             c = ReactionConditions.model_validate(c)
-        result: dict[str, str] = {}
-        if c.reagents:
-            result["above"] = ", ".join(c.reagents)
+        all_reagents.extend(c.reagents)
         if c.notes:
-            result["below"] = c.notes
+            all_below.append(c.notes)
         elif c.yield_pct is not None:
-            result["below"] = f"{c.yield_pct:.0f}%"
-        return result or None
-    return None
+            all_below.append(f"{c.yield_pct:.0f}%")
+    result: dict[str, str] = {}
+    if all_reagents:
+        result["above"] = ", ".join(all_reagents)
+    if all_below:
+        result["below"] = "; ".join(all_below)
+    return result or None
 
 
 def _resolve_smiles(entity_ids: list[str], smiles_map: dict[str, str]) -> list[str]:
@@ -193,6 +200,51 @@ def _should_stack(
     return total > max_width
 
 
+def _fit_mol_width(
+    n_reactants: int,
+    n_products: int,
+    mol_w: float,
+    gap: float,
+    arrow_len: float,
+    plus_w: float,
+    max_width: float,
+    min_mol_w: float,
+    stack: bool,
+) -> float:
+    """Return the largest mol_w ≤ default that keeps every row within max_width.
+
+    V2 / P2 — bond-line packing.
+
+    In *flat* mode the single row holds reactants + arrow + products; all mols
+    share the available space after subtracting fixed costs (plus glyphs, gaps,
+    arrow). In *stacked* mode rows are independent: row 1 is the reactant block
+    only, row 2 is arrow + product block; the binding constraint is whichever
+    row requires smaller molecules. Result is clamped to [min_mol_w, mol_w].
+    """
+    if stack:
+        w_r = (
+            (max_width - max(0, n_reactants - 1) * (2.0 * gap + plus_w)) / n_reactants
+            if n_reactants > 0 else mol_w
+        )
+        w_p = (
+            (max_width - arrow_len - gap - max(0, n_products - 1) * (2.0 * gap + plus_w)) / n_products
+            if n_products > 0 else mol_w
+        )
+        adapted = min(w_r, w_p)
+    else:
+        n_total = n_reactants + n_products
+        if n_total > 0:
+            fixed = (
+                max(0, n_reactants - 1) * (2.0 * gap + plus_w)
+                + gap + arrow_len + gap
+                + max(0, n_products - 1) * (2.0 * gap + plus_w)
+            )
+            adapted = (max_width - fixed) / n_total
+        else:
+            adapted = mol_w
+    return max(min_mol_w, min(mol_w, adapted))
+
+
 def _molecule_centers(
     reactant_ids: list[str],
     product_ids: list[str],
@@ -242,6 +294,194 @@ def _molecule_centers(
 
 
 # ---------------------------------------------------------------------------
+# V2 / R6: multi-step (linear-chain) reaction helpers
+# ---------------------------------------------------------------------------
+
+def _linear_chain_order(figure: Figure) -> list[str] | None:
+    """Return the entity ids of a single linear reaction chain, or None.
+
+    A linear chain is a simple path m0 → m1 → … → mn: every node has at most
+    one outgoing and one incoming relation, there is exactly one start (no
+    incoming) node, the walk visits every entity once, and the relation count
+    equals ``len(chain) - 1``. Branching (a source with two products),
+    convergence (a target with two reactants), cycles, and disconnected
+    entities all return None — those can't be drawn as one molecule row.
+    """
+    out_edge: dict[str, str] = {}
+    in_count: dict[str, int] = {}
+    for r in figure.relations:
+        if r.source in out_edge:
+            return None  # branching: source has >1 outgoing edge
+        out_edge[r.source] = r.target
+        in_count[r.target] = in_count.get(r.target, 0) + 1
+    if any(v > 1 for v in in_count.values()):
+        return None  # convergence: target has >1 incoming edge
+
+    entity_ids = [e.id for e in figure.entities]
+    starts = [eid for eid in entity_ids if in_count.get(eid, 0) == 0]
+    if len(starts) != 1:
+        return None  # zero or multiple chain heads (disconnected / branched)
+
+    order: list[str] = []
+    seen: set[str] = set()
+    node: str | None = starts[0]
+    while node is not None:
+        if node in seen:
+            return None  # cycle
+        order.append(node)
+        seen.add(node)
+        node = out_edge.get(node)
+
+    if len(order) != len(entity_ids) or len(figure.relations) != len(order) - 1:
+        return None  # not every entity on the path, or extra/parallel edges
+    return order
+
+
+def is_linear_chain_reaction(figure: Figure) -> bool:
+    """True when *figure* is a multi-step REACTION_SCHEME that is a linear chain.
+
+    Multi-step = some entity is both a relation source and target (an
+    intermediate). Such a figure can be rendered as a molecule sequence by
+    ``layout_reaction`` only when its relation graph is a single linear chain;
+    the compositor uses this to decide whether to keep the reaction renderer
+    or fall back to the pathway engine (R6).
+    """
+    if figure.archetype != Archetype.REACTION_SCHEME:
+        return False
+    sources = {r.source for r in figure.relations}
+    targets = {r.target for r in figure.relations}
+    if not (sources & targets):
+        return False  # single-step scheme, not multi-step
+    return _linear_chain_order(figure) is not None
+
+
+def _conditions_for_relation(relation) -> dict | None:
+    """Build a single relation's render_reaction-style {'above','below'} dict.
+
+    Per-step analogue of ``_extract_conditions`` (which merges every relation).
+    ``above`` = comma-joined reagents; ``below`` = notes, else a formatted
+    yield percentage. Returns None when the relation carries no conditions.
+    """
+    c = relation.conditions
+    if c is None:
+        return None
+    if isinstance(c, dict):
+        c = ReactionConditions.model_validate(c)
+    result: dict[str, str] = {}
+    if c.reagents:
+        result["above"] = ", ".join(c.reagents)
+    if c.notes:
+        result["below"] = c.notes
+    elif c.yield_pct is not None:
+        result["below"] = f"{c.yield_pct:.0f}%"
+    return result or None
+
+
+def _step_reversible(relation) -> bool:
+    """Return True when this relation's conditions mark it reversible."""
+    c = relation.conditions
+    if c is None:
+        return False
+    if isinstance(c, dict):
+        c = ReactionConditions.model_validate(c)
+    return bool(c.reversible)
+
+
+def _multistep_molecule_centers(
+    chain: list[str],
+    mol_w: float,
+    mol_h: float,
+    gap: float,
+    arrow_len: float,
+    top_pad: float,
+) -> dict[str, tuple[float, float]]:
+    """Return the (cx, cy) centre of every molecule in a linear-chain render.
+
+    Replicates ``render_multistep_reaction``'s cursor geometry so
+    ``reaction_label_requests`` can anchor compound labels without inspecting
+    the rendered SVG (R4-style, extended to N molecules).
+    """
+    result: dict[str, tuple[float, float]] = {}
+    cursor = 0.0
+    cy = top_pad + mol_h / 2.0
+    n = len(chain)
+    for i, eid in enumerate(chain):
+        result[eid] = (cursor + mol_w / 2.0, cy)
+        cursor += mol_w
+        if i < n - 1:
+            cursor += gap + arrow_len + gap
+    return result
+
+
+def _layout_multistep_reaction(
+    figure: Figure,
+    chain: list[str],
+    smiles_map: dict[str, str],
+    layout_params: dict | None,
+    style_dict: dict | None,
+) -> list[LayoutEntry]:
+    """Emit the single ``reaction_0`` LayoutEntry for a linear-chain reaction.
+
+    Resolves SMILES in chain order, shrinks molecule width to fit
+    ``reaction_max_width`` (the flat-row analogue of P2's ``_fit_mol_width``),
+    and pulls each step's conditions / reversibility from the relation joining
+    consecutive molecules.
+    """
+    molecules_smiles = _resolve_smiles(chain, smiles_map)
+
+    params = {**REACTION_DEFAULT_PARAMS, **(layout_params or {})}
+    mol_w, mol_h = params["reaction_molecule_size"]
+
+    from imageGen.primitives.chemistry import DEFAULT_STYLE as _CHEM_STYLE  # noqa: PLC0415
+    _gap = float(_CHEM_STYLE["chem_reaction_gap"])
+    _arrow_len = float(_CHEM_STYLE["chem_reaction_arrow_length"])
+    max_width = float(params["reaction_max_width"])
+    min_mol_w = float(params["reaction_molecule_min_width"])
+
+    n_mol = len(chain)
+    n_steps = n_mol - 1
+    # Flat-row width = n_mol*mol_w + n_steps*(gap + arrow_len + gap). Solve for
+    # the largest mol_w ≤ default that keeps the row within max_width.
+    fixed = n_steps * (2.0 * _gap + _arrow_len)
+    adapted = (max_width - fixed) / n_mol if n_mol else float(mol_w)
+    mol_w_adapted = max(min_mol_w, min(float(mol_w), adapted))
+    if mol_w_adapted < float(mol_w) and mol_w_adapted <= min_mol_w:
+        warnings.warn(
+            f"Multi-step reaction: molecules shrunk to minimum width "
+            f"({min_mol_w}px) but the {n_mol}-molecule chain may still overflow. "
+            f"Increase reaction_max_width or reduce the chain length.",
+            UserWarning,
+            stacklevel=2,
+        )
+    mol_h_adapted = float(mol_h) * (mol_w_adapted / float(mol_w)) if mol_w else float(mol_h)
+    adapted_size = (int(round(mol_w_adapted)), int(round(mol_h_adapted)))
+
+    rel_by_pair = {(r.source, r.target): r for r in figure.relations}
+    step_conditions: list[dict | None] = []
+    step_reversible: list[bool] = []
+    for i in range(n_steps):
+        r = rel_by_pair[(chain[i], chain[i + 1])]
+        step_conditions.append(_conditions_for_relation(r))
+        step_reversible.append(_step_reversible(r))
+
+    kwargs: dict[str, Any] = {
+        "step_conditions": step_conditions,
+        "molecule_size": adapted_size,
+    }
+    if any(step_reversible):
+        kwargs["step_reversible"] = step_reversible
+    if style_dict is not None:
+        kwargs["style_dict"] = style_dict
+    return [LayoutEntry(
+        primitive=render_multistep_reaction,
+        args=(molecules_smiles,),
+        kwargs=kwargs,
+        position=params["reaction_origin"],
+        ir_id=REACTION_GROUP_IR_ID,
+    )]
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -286,6 +526,25 @@ def layout_reaction(
     if not figure.relations:
         raise ValueError("layout_reaction requires a non-empty relations list")
 
+    # V2 / R6: a multi-step reaction (some entity is both source and target)
+    # renders as a molecule sequence when its graph is a single linear chain.
+    # Non-linear multi-step graphs (branching / convergence) still raise; the
+    # compositor routes those through pathway_layout instead.
+    sources = {r.source for r in figure.relations}
+    targets = {r.target for r in figure.relations}
+    if sources & targets:
+        chain = _linear_chain_order(figure)
+        if chain is None:
+            raise NotImplementedError(
+                "Multi-step reaction graph is not a linear chain (branching, "
+                "convergence, or a cycle); cannot render as a molecule sequence. "
+                "Use pathway_layout, or re-encode parallel reactions as separate "
+                "reactant→product edges."
+            )
+        return _layout_multistep_reaction(
+            figure, chain, smiles_map, layout_params, style_dict
+        )
+
     reactant_ids, product_ids = _classify_entities(figure)
     reactants_smiles = _resolve_smiles(reactant_ids, smiles_map)
     products_smiles = _resolve_smiles(product_ids, smiles_map)
@@ -305,15 +564,34 @@ def layout_reaction(
     _gap = float(_CHEM_STYLE["chem_reaction_gap"])
     _arrow_len = float(_CHEM_STYLE["chem_reaction_arrow_length"])
     _plus_w = int(_CHEM_STYLE["chem_reaction_plus_font_size"])
+    max_width = float(params["reaction_max_width"])
     stack = _should_stack(
         len(reactant_ids), len(product_ids),
-        mol_w, _gap, _arrow_len, _plus_w,
-        float(params["reaction_max_width"]),
+        float(mol_w), _gap, _arrow_len, float(_plus_w),
+        max_width,
     )
+
+    # V2/P2: shrink molecule width to fit within max_width when crowded.
+    min_mol_w = float(params["reaction_molecule_min_width"])
+    mol_w_adapted = _fit_mol_width(
+        len(reactant_ids), len(product_ids),
+        float(mol_w), _gap, _arrow_len, float(_plus_w),
+        max_width, min_mol_w, stack,
+    )
+    if mol_w_adapted < float(mol_w) and mol_w_adapted <= min_mol_w:
+        warnings.warn(
+            f"Reaction layout: molecules shrunk to minimum width ({min_mol_w}px) "
+            f"but layout may still overflow. Increase reaction_max_width or "
+            f"reaction_molecule_min_width, or reduce molecule count.",
+            UserWarning,
+            stacklevel=2,
+        )
+    mol_h_adapted = float(mol_h) * (mol_w_adapted / float(mol_w)) if mol_w else float(mol_h)
+    adapted_size = (int(round(mol_w_adapted)), int(round(mol_h_adapted)))
 
     kwargs: dict[str, Any] = {
         "conditions": conditions,
-        "molecule_size": params["reaction_molecule_size"],
+        "molecule_size": adapted_size,
     }
     if reversible:
         kwargs["reversible"] = True
@@ -364,38 +642,55 @@ def reaction_label_requests(
         return []
     entry = entries[0]
     mol_w, mol_h = entry.kwargs["molecule_size"]
-    conditions = entry.kwargs.get("conditions")
-    stack = entry.kwargs.get("stack", False)
-    row_gap = float(entry.kwargs.get("stacked_row_gap", 24.0))
 
-    # Replicate top_pad from render_reaction (rough approximation based on
-    # above-condition line count; matches render_reaction's _wrap logic).
-    cond_size = 11   # chemistry.DEFAULT_STYLE["chem_conditions_font_size"]
-    cond_offset = 6.0
-    line_gap = cond_size * 1.3
-    top_pad = 0.0
-    if conditions and conditions.get("above"):
-        above_text = str(conditions["above"])
-        n_lines = 1 + sum(
-            1 for i in range(28, len(above_text), 28)
-            if above_text[i - 1] != " "
-        )
-        # Simple count: ceil(len / 28)
-        n_lines = max(1, (len(above_text) + 27) // 28)
-        top_pad = n_lines * line_gap + cond_offset
-
-    from imageGen.primitives.chemistry import DEFAULT_STYLE as _CHEM_STYLE  # noqa: PLC0415
+    from imageGen.primitives.chemistry import (  # noqa: PLC0415
+        DEFAULT_STYLE as _CHEM_STYLE,
+        _wrap_conditions,
+    )
     _gap = float(_CHEM_STYLE["chem_reaction_gap"])
     _arrow_len = float(_CHEM_STYLE["chem_reaction_arrow_length"])
     _plus_w = int(_CHEM_STYLE["chem_reaction_plus_font_size"])
+    cond_size = int(_CHEM_STYLE["chem_conditions_font_size"])
+    cond_offset = float(_CHEM_STYLE["chem_conditions_offset"])
+    line_gap = cond_size * 1.3
 
-    reactant_ids, product_ids = _classify_entities(figure)
-    centers = _molecule_centers(
-        reactant_ids, product_ids,
-        float(mol_w), float(mol_h),
-        _gap, _arrow_len, float(_plus_w),
-        top_pad, stack, row_gap,
-    )
+    sources = {r.source for r in figure.relations}
+    targets = {r.target for r in figure.relations}
+    if sources & targets:
+        # V2 / R6: multi-step linear chain — molecules sit in one row, top_pad
+        # is the tallest above-conditions block across all steps (mirrors
+        # render_multistep_reaction).
+        chain = _linear_chain_order(figure)
+        step_conditions = entry.kwargs.get("step_conditions") or []
+        max_above = 0
+        for c in step_conditions:
+            if c and c.get("above"):
+                max_above = max(max_above, len(_wrap_conditions(str(c["above"]))))
+        top_pad = (max_above * line_gap + cond_offset) if max_above else 0.0
+        centers = _multistep_molecule_centers(
+            chain or [], float(mol_w), float(mol_h), _gap, _arrow_len, top_pad,
+        )
+    else:
+        conditions = entry.kwargs.get("conditions")
+        stack = entry.kwargs.get("stack", False)
+        row_gap = float(entry.kwargs.get("stacked_row_gap", 24.0))
+
+        # Replicate top_pad from render_reaction (rough approximation based on
+        # above-condition line count; matches render_reaction's _wrap logic).
+        top_pad = 0.0
+        if conditions and conditions.get("above"):
+            above_text = str(conditions["above"])
+            # Simple count: ceil(len / 28)
+            n_lines = max(1, (len(above_text) + 27) // 28)
+            top_pad = n_lines * line_gap + cond_offset
+
+        reactant_ids, product_ids = _classify_entities(figure)
+        centers = _molecule_centers(
+            reactant_ids, product_ids,
+            float(mol_w), float(mol_h),
+            _gap, _arrow_len, float(_plus_w),
+            top_pad, stack, row_gap,
+        )
 
     entity_by_id = {e.id: e for e in figure.entities}
     requests: list[LabelRequest] = []

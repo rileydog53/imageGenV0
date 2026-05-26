@@ -71,6 +71,7 @@ PANEL_DEFAULT_PARAMS: dict[str, Any] = {
     "panel_title_size":       12,
     "panel_title_family":     "Helvetica, Arial, sans-serif",
     "panel_title_weight":     "bold",
+    "panel_title_align":      "left",   # V2/L12: "left" | "center" | "right"
 }
 
 
@@ -138,7 +139,11 @@ def _panel_chrome(
     h: float,
     params: dict,
 ) -> svgwrite.container.Group:
-    """Border rect (always) + title text (when title is non-empty)."""
+    """Border rect (always) + title text (when title is non-empty).
+
+    V2/L12: honors ``panel_title_align`` ("left" | "center" | "right") and
+    newline-split multi-line titles via SVG tspan dy offsets.
+    """
     g = svgwrite.container.Group()
     border = svgwrite.shapes.Rect(
         insert=(x, y),
@@ -150,14 +155,31 @@ def _panel_chrome(
     g.add(border)
     if title:
         size = float(params["panel_title_size"])
-        t = svgwrite.text.Text(
-            title,
-            insert=(x + 8, y + size + 4),
+        align = str(params.get("panel_title_align", "left"))
+        if align == "center":
+            tx = x + w / 2.0
+            anchor = "middle"
+        elif align == "right":
+            tx = x + w - 8.0
+            anchor = "end"
+        else:
+            tx = x + 8.0
+            anchor = "start"
+        ty = y + size + 4.0
+        common_attrs = dict(
             font_family=params["panel_title_family"],
             font_size=size,
             fill=params["panel_title_color"],
         )
+        lines = title.split("\n")
+        t = svgwrite.text.Text("", insert=(tx, ty), **common_attrs)
         t["font-weight"] = params["panel_title_weight"]
+        t["text-anchor"] = anchor
+        line_h = size * 1.2
+        for i, line in enumerate(lines):
+            dy = [0.0] if i == 0 else [line_h]
+            span = svgwrite.text.TSpan(line, x=[tx], dy=dy)
+            t.add(span)
         g.add(t)
     return g
 
@@ -215,6 +237,7 @@ def layout_panel(
     smiles_maps: dict[str, dict[str, str]] | None = None,
     layout_params: dict | None = None,
     style_dict: dict | None = None,
+    style_dicts: dict[str, dict] | None = None,
 ) -> list[LayoutEntry]:
     """Lay out a multi-panel IR Figure as a flat list of LayoutEntry tuples.
 
@@ -227,7 +250,11 @@ def layout_panel(
         layout_params: Optional overlay onto PANEL_DEFAULT_PARAMS plus any
             sub-engine knobs to forward (the engine threads `pathway_*` and
             `reaction_*` keys through unchanged).
-        style_dict: Forwarded as-is to every sub-engine call.
+        style_dict: Global style dict forwarded to sub-engines when no
+            panel-specific entry exists in ``style_dicts``.
+        style_dicts: Per-panel style overrides keyed by ``panel.id``
+            (V2/ST4). When a panel has an entry here it takes precedence
+            over the global ``style_dict`` for that panel's sub-engine call.
 
     Returns:
         A flat `list[LayoutEntry]` in render order: per panel, chrome
@@ -238,8 +265,7 @@ def layout_panel(
         ValueError: figure.panels is empty, or a REACTION_SCHEME panel
             lacks a smiles_maps entry.
         NotImplementedError: a panel's archetype has no engine in
-            ARCHETYPE_TO_LAYOUT, or its content itself contains panels
-            (nested grids are out of scope for v1).
+            ARCHETYPE_TO_LAYOUT (leaf panels only; nested grids recurse).
     """
     if not figure.panels:
         raise ValueError("layout_panel requires a non-empty panels list")
@@ -257,18 +283,7 @@ def layout_panel(
     entries: list[LayoutEntry] = []
 
     for panel in figure.panels:
-        if panel.content.panels:
-            raise NotImplementedError(
-                f"Nested panel grids (panel '{panel.id}' has its own "
-                f"panels) are not supported in v1."
-            )
         archetype = panel.content.archetype
-        sub_engine = ARCHETYPE_TO_LAYOUT.get(archetype)
-        if sub_engine is None:
-            raise NotImplementedError(
-                f"No layout engine registered for archetype "
-                f"{archetype!r} (panel '{panel.id}')"
-            )
 
         px, py, pw, ph = _panel_rect(
             panel.grid, origin, margin, gutter, cell_w, cell_h,
@@ -288,22 +303,46 @@ def layout_panel(
         # below moves them into the panel's cell.
         content_w = pw
         content_h = ph - title_h
-        sub_params = _override_subengine_canvas(
-            archetype, layout_params, (content_w, content_h), (0.0, 0.0),
-        )
+        # ST4: per-panel style wins over global style_dict when provided.
+        effective_style = (style_dicts or {}).get(panel.id, style_dict)
 
-        sub_kwargs: dict = {"layout_params": sub_params}
-        if style_dict is not None:
-            sub_kwargs["style_dict"] = style_dict
-        if archetype is Archetype.REACTION_SCHEME:
-            if not smiles_maps or panel.id not in smiles_maps:
-                raise ValueError(
-                    f"smiles_maps is missing an entry for reaction panel "
-                    f"'{panel.id}'"
+        if panel.content.panels:
+            # V2/L10: nested grid — recurse with content area as the new canvas.
+            nested_params = {
+                **(layout_params or {}),
+                "panel_canvas": (content_w, content_h),
+                "panel_origin": (0.0, 0.0),
+            }
+            nested_kwargs: dict = {"layout_params": nested_params}
+            if smiles_maps is not None:
+                nested_kwargs["smiles_maps"] = smiles_maps
+            if effective_style is not None:
+                nested_kwargs["style_dict"] = effective_style
+            if style_dicts is not None:
+                nested_kwargs["style_dicts"] = style_dicts
+            sub_entries = layout_panel(panel.content, **nested_kwargs)
+        else:
+            sub_engine = ARCHETYPE_TO_LAYOUT.get(archetype)
+            if sub_engine is None:
+                raise NotImplementedError(
+                    f"No layout engine registered for archetype "
+                    f"{archetype!r} (panel '{panel.id}')"
                 )
-            sub_kwargs["smiles_map"] = smiles_maps[panel.id]
+            sub_params = _override_subengine_canvas(
+                archetype, layout_params, (content_w, content_h), (0.0, 0.0),
+            )
+            sub_kwargs: dict = {"layout_params": sub_params}
+            if effective_style is not None:
+                sub_kwargs["style_dict"] = effective_style
+            if archetype is Archetype.REACTION_SCHEME:
+                if not smiles_maps or panel.id not in smiles_maps:
+                    raise ValueError(
+                        f"smiles_maps is missing an entry for reaction panel "
+                        f"'{panel.id}'"
+                    )
+                sub_kwargs["smiles_map"] = smiles_maps[panel.id]
+            sub_entries = sub_engine(panel.content, **sub_kwargs)
 
-        sub_entries = sub_engine(panel.content, **sub_kwargs)
         offset_y = py + title_h
         for sub in sub_entries:
             entries.append(_scope_entry(_shift_entry(sub, px, offset_y), panel.id))

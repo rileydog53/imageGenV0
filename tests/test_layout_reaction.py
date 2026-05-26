@@ -12,6 +12,7 @@ from imageGen.ir.schema import (
 from imageGen.layout.reaction_layout import (
     REACTION_DEFAULT_PARAMS,
     _block_width,
+    _fit_mol_width,
     _is_reversible,
     _molecule_centers,
     _should_stack,
@@ -19,7 +20,7 @@ from imageGen.layout.reaction_layout import (
     reaction_label_requests,
 )
 from imageGen.layout.types import LayoutEntry
-from imageGen.primitives.chemistry import render_reaction
+from imageGen.primitives.chemistry import render_multistep_reaction, render_reaction
 from tests._helpers import load_fixture, render_group_to_png
 
 ESTERIFICATION_SMILES = {
@@ -167,8 +168,9 @@ def test_layout_empty_relations_raises():
         layout_reaction(fig, smiles_map={})
 
 
-def test_layout_intermediate_raises_not_implemented():
-    """An entity that is both source and target = multi-step reaction."""
+def test_layout_linear_chain_renders_as_molecule_sequence():
+    """R6: a linear multi-step chain a→b→c renders as one reaction_0 group
+    calling render_multistep_reaction with the molecules in chain order."""
     fig = _make_minimal_reaction(
         entities=[("a", "A"), ("b", "B"), ("c", "C")],
         relations=[
@@ -176,8 +178,29 @@ def test_layout_intermediate_raises_not_implemented():
             Relation(source="b", target="c", type=RelationType.GENERIC),
         ],
     )
-    with pytest.raises(NotImplementedError, match="Multi-step"):
-        layout_reaction(fig, smiles_map={"a": "C", "b": "CC", "c": "CCC"})
+    entries = layout_reaction(fig, smiles_map={"a": "C", "b": "CC", "c": "CCC"})
+    assert len(entries) == 1
+    assert entries[0].primitive is render_multistep_reaction
+    assert entries[0].ir_id == "reaction_0"
+    (molecules,) = entries[0].args
+    assert molecules == ["C", "CC", "CCC"]  # chain order
+
+
+def test_layout_nonlinear_multistep_raises_not_implemented():
+    """A convergent multi-step graph (a→c, b→c, c→d) is not a linear chain
+    and still raises NotImplementedError."""
+    fig = _make_minimal_reaction(
+        entities=[("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")],
+        relations=[
+            Relation(source="a", target="c", type=RelationType.GENERIC),
+            Relation(source="b", target="c", type=RelationType.GENERIC),
+            Relation(source="c", target="d", type=RelationType.GENERIC),
+        ],
+    )
+    with pytest.raises(NotImplementedError, match="not a linear chain"):
+        layout_reaction(
+            fig, smiles_map={"a": "C", "b": "CC", "c": "CCC", "d": "CCCC"}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +354,10 @@ def test_layout_reaction_sets_stack_kwarg_when_overflow():
     fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
     smiles = {f"r{i}": "CC" for i in range(n)}
     smiles["p0"] = "CCO"
-    entries = layout_reaction(fig, smiles_map=smiles)
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", UserWarning)
+        entries = layout_reaction(fig, smiles_map=smiles)
     assert entries[0].kwargs.get("stack") is True
 
 
@@ -356,7 +382,10 @@ def test_layout_reaction_stacked_renders_without_error():
     fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
     smiles = {f"r{i}": "CC" for i in range(n)}
     smiles["p0"] = "CCO"
-    entries = layout_reaction(fig, smiles_map=smiles)
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", UserWarning)
+        entries = layout_reaction(fig, smiles_map=smiles)
     g = entries[0].primitive(*entries[0].args, **entries[0].kwargs)
     assert isinstance(g, svgwrite.container.Group)
 
@@ -451,3 +480,237 @@ def test_reaction_labels_rendered_in_end_to_end():
     for ent in fig.entities:
         assert ent.label in svg, f"Label {ent.label!r} missing from SVG"
     p.unlink()
+
+
+# ---------------------------------------------------------------------------
+# V2 / R5: per-arrow conditions merge across multiple relations
+# ---------------------------------------------------------------------------
+
+def _two_parallel_reactions(
+    cond1: ReactionConditions | None,
+    cond2: ReactionConditions | None,
+) -> tuple[Figure, dict[str, str]]:
+    """Two independent A→C and B→D relations — no intermediates."""
+    fig = Figure(
+        archetype=Archetype.REACTION_SCHEME,
+        entities=[
+            Entity(id="a", label="A", type=EntityType.METABOLITE),
+            Entity(id="b", label="B", type=EntityType.METABOLITE),
+            Entity(id="c", label="C", type=EntityType.METABOLITE),
+            Entity(id="d", label="D", type=EntityType.METABOLITE),
+        ],
+        relations=[
+            Relation(source="a", target="c", type=RelationType.GENERIC, conditions=cond1),
+            Relation(source="b", target="d", type=RelationType.GENERIC, conditions=cond2),
+        ],
+    )
+    smiles = {"a": "C", "b": "CC", "c": "CCO", "d": "CCCO"}
+    return fig, smiles
+
+
+def test_multi_relation_reagents_merged_into_above():
+    """Two relations with different reagents both appear in 'above', comma-separated."""
+    fig, smiles = _two_parallel_reactions(
+        ReactionConditions(reagents=["HCl"]),
+        ReactionConditions(reagents=["NaOH"]),
+    )
+    entries = layout_reaction(fig, smiles_map=smiles)
+    conditions = entries[0].kwargs["conditions"]
+    assert conditions is not None
+    assert "HCl" in conditions["above"]
+    assert "NaOH" in conditions["above"]
+
+
+def test_multi_relation_notes_merged_into_below():
+    """Two relations with notes both appear in 'below', semicolon-separated."""
+    fig, smiles = _two_parallel_reactions(
+        ReactionConditions(reagents=["A"], notes="0°C"),
+        ReactionConditions(reagents=["B"], notes="80°C"),
+    )
+    entries = layout_reaction(fig, smiles_map=smiles)
+    conditions = entries[0].kwargs["conditions"]
+    assert "0°C" in conditions["below"]
+    assert "80°C" in conditions["below"]
+
+
+def test_multi_relation_partial_conditions_skips_none_relation():
+    """One relation with conditions, one without — only the one with conditions contributes."""
+    fig, smiles = _two_parallel_reactions(
+        ReactionConditions(reagents=["Pd/C"], notes="H2, 1 atm"),
+        None,
+    )
+    entries = layout_reaction(fig, smiles_map=smiles)
+    conditions = entries[0].kwargs["conditions"]
+    assert conditions == {"above": "Pd/C", "below": "H2, 1 atm"}
+
+
+def test_multi_relation_all_without_conditions_returns_none():
+    """All relations with conditions=None must produce conditions=None in kwargs."""
+    fig, smiles = _two_parallel_reactions(None, None)
+    entries = layout_reaction(fig, smiles_map=smiles)
+    assert entries[0].kwargs["conditions"] is None
+
+
+def test_multi_relation_yield_pct_merged_below():
+    """Yield % from multiple relations appear in 'below', semicolon-separated."""
+    fig, smiles = _two_parallel_reactions(
+        ReactionConditions(yield_pct=75.0),
+        ReactionConditions(yield_pct=90.0),
+    )
+    entries = layout_reaction(fig, smiles_map=smiles)
+    conditions = entries[0].kwargs["conditions"]
+    assert "75%" in conditions["below"]
+    assert "90%" in conditions["below"]
+
+
+def test_single_relation_conditions_unchanged():
+    """Single-relation figure behaviour is identical before and after R5 merge logic."""
+    fig = _make_minimal_reaction(relations=[
+        Relation(
+            source="a", target="p", type=RelationType.GENERIC,
+            conditions=ReactionConditions(reagents=["H2SO4 (cat.)"], notes="reflux, 80°C"),
+        ),
+    ])
+    entries = layout_reaction(fig, smiles_map={"a": "CC", "p": "CCO"})
+    assert entries[0].kwargs["conditions"] == {"above": "H2SO4 (cat.)", "below": "reflux, 80°C"}
+
+
+# ---------------------------------------------------------------------------
+# V2 / P2: bond-line packing — adaptive molecule width
+# ---------------------------------------------------------------------------
+
+def test_p2_default_params_has_min_width():
+    assert "reaction_molecule_min_width" in REACTION_DEFAULT_PARAMS
+    assert isinstance(REACTION_DEFAULT_PARAMS["reaction_molecule_min_width"], float)
+
+
+def test_fit_mol_width_uncrowded_returns_default():
+    """1 reactant + 1 product on a wide canvas must not shrink mol_w."""
+    result = _fit_mol_width(
+        n_reactants=1, n_products=1, mol_w=140.0,
+        gap=10.0, arrow_len=80.0, plus_w=12.0,
+        max_width=800.0, min_mol_w=60.0, stack=False,
+    )
+    assert result == pytest.approx(140.0)
+
+
+def test_fit_mol_width_crowded_flat_shrinks():
+    """Many mols on a tight canvas must shrink mol_w below default."""
+    result = _fit_mol_width(
+        n_reactants=4, n_products=4, mol_w=140.0,
+        gap=10.0, arrow_len=80.0, plus_w=12.0,
+        max_width=400.0, min_mol_w=60.0, stack=False,
+    )
+    assert result < 140.0
+    assert result >= 60.0
+
+
+def test_fit_mol_width_crowded_stacked_shrinks():
+    """Crowded stacked layout must also shrink mol_w to fit each row."""
+    result = _fit_mol_width(
+        n_reactants=5, n_products=5, mol_w=140.0,
+        gap=10.0, arrow_len=80.0, plus_w=12.0,
+        max_width=300.0, min_mol_w=60.0, stack=True,
+    )
+    assert result < 140.0
+    assert result >= 60.0
+
+
+def test_fit_mol_width_clamped_to_min():
+    """Extremely crowded: computed width below min must be clamped to min."""
+    result = _fit_mol_width(
+        n_reactants=20, n_products=20, mol_w=140.0,
+        gap=10.0, arrow_len=80.0, plus_w=12.0,
+        max_width=200.0, min_mol_w=60.0, stack=False,
+    )
+    assert result == pytest.approx(60.0)
+
+
+def test_layout_reaction_molecule_size_shrinks_when_crowded():
+    """layout_reaction must pass a smaller molecule_size when 3 reactants crowd a narrow canvas."""
+    entities = [
+        Entity(id=f"r{i}", type=EntityType.METABOLITE, label=f"R{i}") for i in range(3)
+    ] + [Entity(id="p0", type=EntityType.METABOLITE, label="P")]
+    relations = [
+        Relation(source=f"r{i}", target="p0", type=RelationType.GENERIC)
+        for i in range(3)
+    ]
+    fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {f"r{i}": "CC" for i in range(3)}
+    smiles["p0"] = "CCO"
+    default_w = REACTION_DEFAULT_PARAMS["reaction_molecule_size"][0]
+    entries = layout_reaction(
+        fig, smiles_map=smiles,
+        layout_params={"reaction_max_width": 350.0},
+    )
+    adapted_w = entries[0].kwargs["molecule_size"][0]
+    assert adapted_w < default_w
+
+
+def test_layout_reaction_molecule_size_unchanged_when_uncrowded():
+    """A simple 1→1 reaction on a wide canvas must keep the default molecule size."""
+    fig = _make_minimal_reaction()
+    default_size = REACTION_DEFAULT_PARAMS["reaction_molecule_size"]
+    entries = layout_reaction(fig, smiles_map={"a": "CC", "p": "CCO"})
+    assert entries[0].kwargs["molecule_size"] == default_size
+
+
+def test_layout_reaction_height_scales_with_width():
+    """When width shrinks, height must scale proportionally (same aspect ratio)."""
+    entities = [
+        Entity(id=f"r{i}", type=EntityType.METABOLITE, label=f"R{i}") for i in range(4)
+    ] + [Entity(id="p0", type=EntityType.METABOLITE, label="P")]
+    relations = [
+        Relation(source=f"r{i}", target="p0", type=RelationType.GENERIC)
+        for i in range(4)
+    ]
+    fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {f"r{i}": "CC" for i in range(4)}
+    smiles["p0"] = "CCO"
+    default_w, default_h = REACTION_DEFAULT_PARAMS["reaction_molecule_size"]
+    entries = layout_reaction(
+        fig, smiles_map=smiles,
+        layout_params={"reaction_max_width": 400.0},
+    )
+    aw, ah = entries[0].kwargs["molecule_size"]
+    if aw < default_w:
+        expected_h = round(default_h * (aw / default_w))
+        assert abs(ah - expected_h) <= 1  # integer rounding tolerance
+
+
+def test_layout_reaction_min_width_warn_when_clamped():
+    """When adapted width hits the minimum, a UserWarning must be emitted."""
+    entities = [
+        Entity(id=f"r{i}", type=EntityType.METABOLITE, label=f"R{i}") for i in range(10)
+    ] + [Entity(id="p0", type=EntityType.METABOLITE, label="P")]
+    relations = [
+        Relation(source=f"r{i}", target="p0", type=RelationType.GENERIC)
+        for i in range(10)
+    ]
+    fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {f"r{i}": "CC" for i in range(10)}
+    smiles["p0"] = "CCO"
+    with pytest.warns(UserWarning, match="minimum width"):
+        layout_reaction(fig, smiles_map=smiles)
+
+
+def test_layout_reaction_custom_min_width_respected():
+    """reaction_molecule_min_width knob must override the 60px default floor."""
+    entities = [
+        Entity(id=f"r{i}", type=EntityType.METABOLITE, label=f"R{i}") for i in range(10)
+    ] + [Entity(id="p0", type=EntityType.METABOLITE, label="P")]
+    relations = [
+        Relation(source=f"r{i}", target="p0", type=RelationType.GENERIC)
+        for i in range(10)
+    ]
+    fig = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {f"r{i}": "CC" for i in range(10)}
+    smiles["p0"] = "CCO"
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", UserWarning)
+        entries = layout_reaction(
+            fig, smiles_map=smiles,
+            layout_params={"reaction_molecule_min_width": 40.0},
+        )
+    assert entries[0].kwargs["molecule_size"][0] >= 40

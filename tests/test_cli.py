@@ -148,11 +148,15 @@ def test_canvas_flag_rejects_bad_value(tmp_path):
         main([MAPK, "-o", str(tmp_path / "fig.svg"), "--canvas", "wide"])
 
 
-def test_strict_labels_flag_raises_on_dense(tmp_path):
-    from imageGen.layout.label_placement import LabelPlacementError
-    dense = str(FIXTURES_DIR / "western_blot_schematic.json")
-    with pytest.raises(LabelPlacementError):
-        main([dense, "-o", str(tmp_path / "fig.png"), "--strict-labels"])
+def test_strict_labels_flag_renders_mrna_vaccine_cleanly(tmp_path):
+    # L24 added _LARGE_NUDGES to the fallback ladder, resolving the label
+    # collision that previously caused the mRNA-vaccine abstract to fail with
+    # --strict-labels. This test confirms that improvement: the fixture now
+    # renders without raising LabelPlacementError under strict mode.
+    dense = str(FIXTURES_DIR / "graphical_abstract_mrna_vaccine.json")
+    rc = main([dense, "-o", str(tmp_path / "fig.png"), "--strict-labels"])
+    assert rc == 0
+    assert (tmp_path / "fig.png").exists()
 
 
 def test_render_spec_accepts_style_preset_alias(tmp_path):

@@ -296,6 +296,67 @@ def _reversible_arrow(
     return fwd + bwd
 
 
+def _wrap_conditions(text: str, max_chars: int = 28) -> list[str]:
+    """Split long condition strings at ', ' boundaries into ≤max_chars lines."""
+    if len(text) <= max_chars:
+        return [text]
+    parts = text.split(", ")
+    lines: list[str] = []
+    current = ""
+    for part in parts:
+        candidate = f"{current}, {part}" if current else part
+        if len(candidate) > max_chars and current:
+            lines.append(current)
+            current = part
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def _emit_conditions(
+    group: svgwrite.container.Group,
+    conditions: dict | None,
+    above_lines: list[str],
+    arrow_mid_x: float,
+    y_mol_top: float,
+    mol_h: float,
+    style: dict,
+) -> None:
+    """Render above/below condition text centred on ``arrow_mid_x``.
+
+    Shared by ``render_multistep_reaction``; the geometry matches the
+    closure inside ``render_reaction`` so single- and multi-step schemes
+    place conditions identically.
+    """
+    if not conditions:
+        return
+    cond_size = int(style["chem_conditions_font_size"])
+    cond_offset = float(style["chem_conditions_offset"])
+    line_gap = cond_size * 1.3
+
+    def _ctext(text: str, y: float) -> svgwrite.text.Text:
+        return svgwrite.text.Text(
+            text,
+            insert=(arrow_mid_x, y),
+            font_size=cond_size, fill=str(style["chem_conditions_color"]),
+            font_family=str(style["label_font_family"]),
+            text_anchor="middle",
+        )
+
+    if above_lines:
+        n = len(above_lines)
+        for i, line in enumerate(above_lines):
+            y = y_mol_top - cond_offset - line_gap * (n - 1 - i)
+            group.add(_ctext(line, y))
+    if conditions.get("below"):
+        group.add(_ctext(
+            str(conditions["below"]),
+            y_mol_top + mol_h + cond_offset + cond_size,
+        ))
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -390,30 +451,12 @@ def render_reaction(
     line_gap = cond_size * 1.3  # leading between wrapped lines
     arrow_fn = _reversible_arrow if reversible else _arrow
 
-    def _wrap(text: str, max_chars: int = 28) -> list[str]:
-        """Split long condition strings at ', ' boundaries into ≤max_chars lines."""
-        if len(text) <= max_chars:
-            return [text]
-        parts = text.split(", ")
-        lines: list[str] = []
-        current = ""
-        for part in parts:
-            candidate = f"{current}, {part}" if current else part
-            if len(candidate) > max_chars and current:
-                lines.append(current)
-                current = part
-            else:
-                current = candidate
-        if current:
-            lines.append(current)
-        return lines or [text]
-
     # Pre-compute above-condition lines so we know how much top padding is needed
     # before placing molecules.  All molecule/arrow y-coords shift down by top_pad
     # so the "above" text sits in positive SVG space and is never clipped.
     above_lines: list[str] = []
     if conditions and conditions.get("above"):
-        above_lines = _wrap(str(conditions["above"]))
+        above_lines = _wrap_conditions(str(conditions["above"]))
     top_pad = (len(above_lines) * line_gap + cond_offset) if above_lines else 0.0
 
     group = svgwrite.container.Group()
@@ -494,6 +537,104 @@ def render_reaction(
         _render_conditions_at(arrow_len / 2.0, mol_top_2)
         _place_block_at(products_smiles, arrow_len + gap, mol_top_2)
 
+    return group
+
+
+def render_multistep_reaction(
+    molecules_smiles: list[str],
+    step_conditions: list[dict | None] | None = None,
+    style_dict: dict | None = None,
+    molecule_size: tuple[int, int] = (140, 100),
+    step_reversible: list[bool] | None = None,
+) -> svgwrite.container.Group:
+    """Render a linear multi-step reaction: m0 → m1 → … → mn.
+
+    Each consecutive molecule pair is joined by a reaction arrow carrying that
+    step's optional ``conditions`` ({'above', 'below'}). Layout is a single
+    horizontal row — the same geometry as ``render_reaction``'s flat mode,
+    generalised to N molecules and N-1 arrows. Intermediates are drawn once
+    (a molecule that is the product of one step and the reactant of the next
+    appears a single time in the chain).
+
+    V2 / R6.
+
+    Args:
+        molecules_smiles: Ordered SMILES for the chain, reactant → … → product.
+            Must contain at least two molecules.
+        step_conditions: One conditions dict (or None) per arrow; length must
+            equal ``len(molecules_smiles) - 1`` when given. None → no labels on
+            any arrow.
+        style_dict: Optional preset overlay; merged onto DEFAULT_STYLE.
+        molecule_size: Per-molecule bbox in pixels (fixed, like render_reaction).
+        step_reversible: One bool per arrow; True draws a paired equilibrium
+            arrow for that step. None → all forward.
+
+    Returns:
+        An svgwrite.container.Group with the chain laid out left-to-right,
+        top-left at the Group's local origin.
+
+    Raises:
+        ValueError: fewer than two molecules, a per-step list length mismatch,
+            or any SMILES fails to parse.
+    """
+    if len(molecules_smiles) < 2:
+        raise ValueError(
+            "render_multistep_reaction requires at least two molecules"
+        )
+    n_steps = len(molecules_smiles) - 1
+    step_conditions = step_conditions if step_conditions is not None else [None] * n_steps
+    step_reversible = step_reversible if step_reversible is not None else [False] * n_steps
+    if len(step_conditions) != n_steps:
+        raise ValueError(
+            f"step_conditions must have length {n_steps} (n_molecules - 1), "
+            f"got {len(step_conditions)}"
+        )
+    if len(step_reversible) != n_steps:
+        raise ValueError(
+            f"step_reversible must have length {n_steps} (n_molecules - 1), "
+            f"got {len(step_reversible)}"
+        )
+
+    style = {**DEFAULT_STYLE, **(style_dict or {})}
+    mol_w, mol_h = molecule_size
+    gap = float(style["chem_reaction_gap"])
+    arrow_len = float(style["chem_reaction_arrow_length"])
+    cond_size = int(style["chem_conditions_font_size"])
+    cond_offset = float(style["chem_conditions_offset"])
+    line_gap = cond_size * 1.3
+
+    # Pre-wrap each step's above-text; top_pad is the max across steps so every
+    # molecule shares one baseline and the tallest condition block never clips.
+    above_lines_per_step: list[list[str]] = []
+    for c in step_conditions:
+        if c and c.get("above"):
+            above_lines_per_step.append(_wrap_conditions(str(c["above"])))
+        else:
+            above_lines_per_step.append([])
+    max_above = max((len(lines) for lines in above_lines_per_step), default=0)
+    top_pad = (max_above * line_gap + cond_offset) if max_above else 0.0
+
+    group = svgwrite.container.Group()
+    mol_top = top_pad
+    midline_y = mol_top + mol_h / 2.0
+    cursor = 0.0
+    for i, smi in enumerate(molecules_smiles):
+        mol = _smiles_to_mol(smi)
+        group.add(_inline_molecule(mol, (mol_w, mol_h), "skeletal", style,
+                                   translate=(cursor, mol_top)))
+        cursor += mol_w
+        if i < n_steps:
+            cursor += gap
+            arrow_fn = _reversible_arrow if step_reversible[i] else _arrow
+            arrow_start = (cursor, midline_y)
+            arrow_end = (cursor + arrow_len, midline_y)
+            for elem in arrow_fn(arrow_start, arrow_end, style):
+                group.add(elem)
+            _emit_conditions(
+                group, step_conditions[i], above_lines_per_step[i],
+                cursor + arrow_len / 2.0, mol_top, mol_h, style,
+            )
+            cursor += arrow_len + gap
     return group
 
 

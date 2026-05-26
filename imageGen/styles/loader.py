@@ -82,6 +82,51 @@ KNOWN_STYLE_KEYS: frozenset[str] = _collect_known_style_keys()
 
 
 # ---------------------------------------------------------------------------
+# V2 / ST1: palette-to-primitive fill recipe.
+# Each slot i maps palette[i] to a list of style keys that should receive
+# that colour. apply_palette_recipe() derives a flat style dict from any
+# 8-colour palette; load_style() merges it under explicit overrides so
+# overrides always win. Presets can supply a custom palette_recipe to
+# redefine the mapping; None means "use PALETTE_RECIPE".
+# ---------------------------------------------------------------------------
+
+PALETTE_RECIPE: list[list[str]] = [
+    ["protein_fill"],               # palette[0] — generic entity / protein fill
+    ["kinase_fill"],                # palette[1] — kinase / enzyme fill
+    ["receptor_fill"],              # palette[2] — receptor fill
+    ["gpcr_helix_fill"],            # palette[3] — GPCR helix fill
+    ["tf_fill"],                    # palette[4] — transcription factor fill
+    ["dna_strand1_stroke"],         # palette[5] — DNA strand colour
+    ["rna_stroke"],                 # palette[6] — RNA stroke colour
+    ["chromatin_nucleosome_fill"],  # palette[7] — chromatin / histone fill
+]
+
+
+def apply_palette_recipe(
+    palette: list[str],
+    recipe: list[list[str]] | None = None,
+) -> dict[str, str]:
+    """Derive a flat style dict from a palette using a slot→key recipe.
+
+    Args:
+        palette: Exactly 8 ``#RRGGBB`` hex strings.
+        recipe: List of 8 slots; slot ``i`` is a list of style keys to set
+                to ``palette[i]``. Defaults to ``PALETTE_RECIPE`` when ``None``.
+
+    Returns:
+        Flat ``{style_key: hex_colour}`` dict. When multiple slots map to the
+        same key (unusual), the last slot wins (deterministic, palette-order).
+        Always call this before merging explicit overrides so overrides win.
+    """
+    active = recipe if recipe is not None else PALETTE_RECIPE
+    result: dict[str, str] = {}
+    for colour, keys in zip(palette, active):
+        for key in keys:
+            result[key] = colour
+    return result
+
+
+# ---------------------------------------------------------------------------
 # V2 / ST2: aesthetic layout-param key set.
 # These are the *aesthetic* knobs from each layout engine's *_DEFAULT_PARAMS
 # dict — colors, strokes, font sizes/families — that make sense to carry in a
@@ -129,6 +174,12 @@ class StylePreset(BaseModel):
     as `layout_params=` to any layout engine call; the engine merges it
     onto its own *_DEFAULT_PARAMS.
 
+    `inherits` (V2/ST3): optional name of a parent preset. The parent's
+    `overrides` and `layout_overrides` are merged as a base layer; child
+    keys win on conflicts. `palette` and `meta` are always the child's
+    (they define the preset's identity). `palette_recipe` is inherited
+    from the parent when the child does not set its own.
+
     `meta` and `palette` are introspectable via `load_preset_full(name)`
     for callers (e.g. tests, future renderer chrome) that need them.
     """
@@ -136,6 +187,8 @@ class StylePreset(BaseModel):
 
     meta: _PresetMeta
     palette: list[str] = Field(min_length=8, max_length=8)
+    palette_recipe: list[list[str]] | None = Field(default=None)
+    inherits: str | None = Field(default=None)
     overrides: dict[str, Any] = Field(default_factory=dict)
     layout_overrides: dict[str, Any] = Field(default_factory=dict)
 
@@ -149,6 +202,16 @@ class StylePreset(BaseModel):
             )
         return v
 
+    @field_validator("palette_recipe")
+    @classmethod
+    def _validate_recipe_len(cls, v: list[list[str]] | None) -> list[list[str]] | None:
+        if v is not None and len(v) != 8:
+            raise ValueError(
+                f"palette_recipe must have exactly 8 slots (one per palette colour); "
+                f"got {len(v)}"
+            )
+        return v
+
 
 def _preset_path(name: str) -> Path:
     return PRESET_DIR / f"{name}.json"
@@ -159,21 +222,10 @@ def list_presets() -> list[str]:
     return sorted(p.stem for p in PRESET_DIR.glob("*.json"))
 
 
-def load_preset_full(name: str = DEFAULT_PRESET) -> StylePreset:
-    """Load + validate a preset; return the typed StylePreset model.
+def _load_and_warn(name: str) -> StylePreset:
+    """Load, validate, and emit unknown-key warnings for a single preset file.
 
-    Useful for tests + future renderer chrome that needs `meta` /
-    `palette`. Most callers want `load_style` instead.
-
-    V2 / ST5: emits a ``UserWarning`` for any key in ``overrides`` that
-    is not present in ``KNOWN_STYLE_KEYS`` (the union of all primitive
-    ``DEFAULT_STYLE`` dicts). This is a typo guard — it never raises so
-    callers are never broken by it.
-
-    Raises:
-        FileNotFoundError: name has no matching JSON in styles/.
-        pydantic.ValidationError: schema check failed (missing meta,
-            palette wrong length, malformed hex, unknown extra fields).
+    Does NOT resolve ``inherits`` — call ``_resolve_preset`` for that.
     """
     path = _preset_path(name)
     if not path.exists():
@@ -190,7 +242,7 @@ def load_preset_full(name: str = DEFAULT_PRESET) -> StylePreset:
             f"{unknown_style!r}. Check for typos against KNOWN_STYLE_KEYS in "
             f"imageGen.styles.loader.",
             UserWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
     unknown_layout = sorted(set(preset.layout_overrides) - KNOWN_LAYOUT_PARAMS)
     if unknown_layout:
@@ -199,27 +251,86 @@ def load_preset_full(name: str = DEFAULT_PRESET) -> StylePreset:
             f"{unknown_layout!r}. Check for typos against KNOWN_LAYOUT_PARAMS in "
             f"imageGen.styles.loader.",
             UserWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
     return preset
 
 
+def _resolve_preset(name: str, chain: tuple[str, ...]) -> StylePreset:
+    """Recursively load a preset, merging ancestor ``overrides`` under child keys.
+
+    ``chain`` is the ancestor path used for cycle detection; callers pass ``()``
+    at the root. Raises ``ValueError`` on circular ``inherits`` references.
+    """
+    if name in chain:
+        cycle = " → ".join(chain + (name,))
+        raise ValueError(f"Circular preset inheritance detected: {cycle}")
+    preset = _load_and_warn(name)
+    if preset.inherits is None:
+        return preset
+    parent = _resolve_preset(preset.inherits, chain + (name,))
+    # Merge: parent as base layer, child wins on every key conflict.
+    # palette and meta are identity fields — always the child's.
+    return StylePreset.model_construct(
+        meta=preset.meta,
+        palette=preset.palette,
+        palette_recipe=(
+            preset.palette_recipe if preset.palette_recipe is not None
+            else parent.palette_recipe
+        ),
+        inherits=None,  # inheritance already resolved
+        overrides={**parent.overrides, **preset.overrides},
+        layout_overrides={**parent.layout_overrides, **preset.layout_overrides},
+    )
+
+
+def load_preset_full(name: str = DEFAULT_PRESET) -> StylePreset:
+    """Load + validate a preset; return the typed StylePreset model.
+
+    Resolves ``inherits`` chains (V2/ST3): the returned preset has fully
+    merged ``overrides`` and ``layout_overrides`` with child keys winning.
+
+    Useful for tests + future renderer chrome that needs ``meta`` /
+    ``palette``. Most callers want ``load_style`` instead.
+
+    V2 / ST5: emits a ``UserWarning`` for any key in ``overrides`` that
+    is not present in ``KNOWN_STYLE_KEYS`` (the union of all primitive
+    ``DEFAULT_STYLE`` dicts). This is a typo guard — it never raises so
+    callers are never broken by it.
+
+    Raises:
+        FileNotFoundError: name has no matching JSON in styles/.
+        pydantic.ValidationError: schema check failed (missing meta,
+            palette wrong length, malformed hex, unknown extra fields).
+        ValueError: circular ``inherits`` chain detected.
+    """
+    return _resolve_preset(name, ())
+
+
 def load_style(name: str = DEFAULT_PRESET) -> dict:
-    """Load a journal preset → flat overrides dict for primitives.
+    """Load a journal preset → flat style dict for primitives.
+
+    Merges in two layers (later wins):
+    1. Palette-recipe fill derivation — ``apply_palette_recipe(palette, preset.palette_recipe)``
+    2. Explicit ``overrides`` from the preset JSON
+
+    This means a preset can omit ``*_fill`` entries and rely on the palette
+    recipe to supply them; explicit overrides are still respected. Existing
+    presets that spell out all fills are unaffected — their overrides win.
 
     Args:
         name: Preset stem (e.g. "cell_press"). Defaults to cell_press.
 
     Returns:
-        The preset's `overrides` block as a flat dict. Pass directly as
-        `style_dict=…` to any primitive; primitive `DEFAULT_STYLE`
-        fills any keys the preset omits.
+        Flat style dict. Pass as ``style_dict=…`` to any primitive.
 
     Raises:
         FileNotFoundError: unknown preset name.
         pydantic.ValidationError: malformed preset JSON.
     """
-    return load_preset_full(name).overrides
+    preset = load_preset_full(name)
+    recipe_style = apply_palette_recipe(preset.palette, preset.palette_recipe)
+    return {**recipe_style, **preset.overrides}
 
 
 def load_layout_params(name: str = DEFAULT_PRESET) -> dict:

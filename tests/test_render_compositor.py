@@ -22,6 +22,7 @@ from imageGen.ir.schema import (
     RelationType,
 )
 from imageGen.render.compositor import (
+    _build_panel_styles,
     _is_multistep_reaction,
     _needs_watermark,
     _resolve_format,
@@ -325,24 +326,46 @@ def test_is_multistep_reaction_predicate():
     assert _is_multistep_reaction(load_fixture(MAPK)) is False
 
 
-def test_multistep_reaction_renders_without_smiles_map(tmp_path):
-    """R3: a multi-step reaction routes to the pathway engine, which needs no
-    SMILES — so omitting smiles_map must not raise (unlike a single-step scheme)."""
+def test_linear_multistep_reaction_requires_smiles_map(tmp_path):
+    """R6: a linear multi-step chain now renders real structures, so it needs a
+    smiles_map just like a single-step scheme — omitting it raises."""
     ir = _multistep_reaction(2)
-    out = render_figure(ir, tmp_path / "fig.svg")  # no smiles_map
-    assert out.exists()
-    ET.parse(str(out))  # well-formed SVG
+    with pytest.raises(ValueError, match="smiles_map required"):
+        render_figure(ir, tmp_path / "fig.svg")  # no smiles_map
 
 
-def test_multistep_reaction_uses_pathway_path_not_reaction(tmp_path):
-    """The chain renders per-entity boxes (pathway) — every entity id is tagged
-    and the single composite `reaction_0` group is absent."""
+def test_linear_multistep_reaction_uses_reaction_path(tmp_path):
+    """R6: the chain renders as a molecule sequence (reaction_0 group present),
+    NOT per-entity pathway boxes."""
     ir = _multistep_reaction(2)
-    out = render_figure(ir, tmp_path / "fig.svg")
+    smiles = {e.id: "C" * (i + 1) for i, e in enumerate(ir.entities)}
+    out = render_figure(ir, tmp_path / "fig.svg", smiles_map=smiles)
     tagged = _svg_elements_with_attr(out, "data-ir-id")
+    assert "reaction_0" in tagged, "reaction_0 absent — did not route to layout_reaction"
+    # Per-entity ids are NOT tagged: the chain is a single composite group.
+    for e in ir.entities:
+        assert e.id not in tagged, f"entity {e.id!r} tagged — routed to pathway, not reaction"
+
+
+def test_nonlinear_multistep_reaction_falls_back_to_pathway(tmp_path):
+    """A convergent multi-step graph (not a linear chain) still coerces to the
+    pathway engine: per-entity boxes, no reaction_0, and a SMILES-drop warning."""
+    entities = [
+        Entity(id=f"e{i}", type=EntityType.METABOLITE, label=f"M{i}") for i in range(4)
+    ]
+    relations = [
+        Relation(source="e0", target="e2", type=RelationType.GENERIC),
+        Relation(source="e1", target="e2", type=RelationType.GENERIC),
+        Relation(source="e2", target="e3", type=RelationType.GENERIC),
+    ]
+    ir = Figure(archetype=Archetype.REACTION_SCHEME, entities=entities, relations=relations)
+    smiles = {e.id: "C" for e in entities}
+    with pytest.warns(UserWarning, match="SMILES structures will not be drawn"):
+        out = render_figure(ir, tmp_path / "fig.svg", smiles_map=smiles)
+    tagged = _svg_elements_with_attr(out, "data-ir-id")
+    assert "reaction_0" not in tagged
     for e in ir.entities:
         assert e.id in tagged, f"entity {e.id!r} not tagged — did not route to pathway"
-    assert "reaction_0" not in tagged, "reaction_0 present — routed to layout_reaction"
 
 
 # ---------------------------------------------------------------------------
@@ -634,6 +657,72 @@ def test_panel_figure_missing_smiles_map_raises_for_reaction_panel(tmp_path):
         render_figure(ir, tmp_path / "fig.svg")
 
 
+# ---------------------------------------------------------------------------
+# V2 / ST4: per-panel preset switching
+# ---------------------------------------------------------------------------
+
+def test_build_panel_styles_empty_when_all_same():
+    """_build_panel_styles returns {} when all panels share the top-level preset."""
+    ir = load_fixture(WORKFLOW_FIXTURE)
+    # all panels default to cell_press; top-level style_name is also cell_press
+    result = _build_panel_styles(ir, "cell_press")
+    assert result == {}
+
+
+def test_build_panel_styles_returns_entry_for_different_preset():
+    """_build_panel_styles includes a panel whose content uses a different preset."""
+    from imageGen.ir.schema import Panel, Figure, Archetype, Entity, EntityType
+    # Build a minimal 2-panel figure; p2 uses "nature" instead of the top-level "acs"
+    sub_fig_a = Figure(
+        archetype=Archetype.PATHWAY,
+        style_preset="acs",
+        entities=[Entity(id="e1", label="A", type=EntityType.PROTEIN)],
+    )
+    sub_fig_b = Figure(
+        archetype=Archetype.PATHWAY,
+        style_preset="nature",
+        entities=[Entity(id="e2", label="B", type=EntityType.PROTEIN)],
+    )
+    ir = Figure(
+        archetype=Archetype.PATHWAY,
+        panels=[
+            Panel(id="p1", content=sub_fig_a, grid=(0, 0, 1, 1)),
+            Panel(id="p2", content=sub_fig_b, grid=(0, 1, 1, 1)),
+        ],
+    )
+    result = _build_panel_styles(ir, "acs")
+    assert "p1" not in result          # p1 matches top-level "acs"
+    assert "p2" in result              # p2 differs → entry built
+    # Spot-check: nature has a different protein_fill from acs
+    from imageGen.styles.loader import load_style
+    assert result["p2"]["protein_fill"] == load_style("nature")["protein_fill"]
+
+
+def test_per_panel_preset_renders_without_error(tmp_path):
+    """render_figure must succeed when panel content has a different style_preset."""
+    from imageGen.ir.schema import Panel, Figure, Archetype, Entity, EntityType
+    sub_fig_a = Figure(
+        archetype=Archetype.PATHWAY,
+        style_preset="cell_press",
+        entities=[Entity(id="e1", label="Protein A", type=EntityType.PROTEIN)],
+    )
+    sub_fig_b = Figure(
+        archetype=Archetype.PATHWAY,
+        style_preset="nature",
+        entities=[Entity(id="e2", label="Protein B", type=EntityType.PROTEIN)],
+    )
+    ir = Figure(
+        archetype=Archetype.PATHWAY,
+        panels=[
+            Panel(id="p1", content=sub_fig_a, grid=(0, 0, 1, 1)),
+            Panel(id="p2", content=sub_fig_b, grid=(0, 1, 1, 1)),
+        ],
+    )
+    out = render_figure(ir, tmp_path / "mixed_preset.svg")
+    assert out.exists()
+    ET.parse(str(out))  # valid XML
+
+
 def test_golden_svg_three_panel_workflow(tmp_path):
     """End-to-end golden: render three_panel_workflow, verify per-panel
     entity tagging, and emit the PNG for visual review."""
@@ -653,3 +742,56 @@ def test_golden_svg_three_panel_workflow(tmp_path):
     png_path = FIGURES_DIR / "compositor_three_panel_workflow.png"
     png_path.write_bytes(cairosvg.svg2png(url=str(out)))
     assert png_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# V2 / L22: autocrop consumes needs_crop
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+_SVG_SIZE = _re.compile(r'<svg\b[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"', _re.I)
+_VIEWBOX = _re.compile(r'viewBox="([\d.\- ]+)"', _re.I)
+
+
+def _svg_dims(svg_path) -> tuple[float, float]:
+    """Parse (width, height) from the opening <svg> tag."""
+    tag = _re.search(r"<svg\b[^>]*>", svg_path.read_text(), _re.I).group(0)
+    w = float(_re.search(r'width="([\d.]+)"', tag).group(1))
+    h = float(_re.search(r'height="([\d.]+)"', tag).group(1))
+    return w, h
+
+
+def test_autocrop_false_preserves_canvas(tmp_path):
+    """Default autocrop=False leaves SVG dimensions at the computed canvas size."""
+    fig = load_fixture(MAPK)
+    out = tmp_path / "fig.svg"
+    render_figure(fig, out, autocrop=False)
+    w, h = _svg_dims(out)
+    # 4-entity pathway, single implicit band: L21 width ≥ 800, L19 height = 100.
+    assert w >= 800.0
+    assert h == 100.0
+
+
+def test_autocrop_true_trims_excess_whitespace(tmp_path):
+    """autocrop=True shrinks the SVG height when the content leaves dead bottom margin."""
+    fig = load_fixture(MAPK)
+    out_crop = tmp_path / "cropped.svg"
+    out_full = tmp_path / "full.svg"
+    render_figure(fig, out_full, autocrop=False)
+    render_figure(fig, out_crop, autocrop=True)
+    _, h_full = _svg_dims(out_full)
+    _, h_crop = _svg_dims(out_crop)
+    # The crop must be strictly smaller or equal (content fits in the same height
+    # only when there was no dead margin — in practice the 100px band floor leaves
+    # whitespace above/below the entity row, so the crop should be tighter).
+    assert h_crop <= h_full
+
+
+def test_autocrop_true_adds_viewbox(tmp_path):
+    """autocrop=True rewrites the SVG to have a viewBox attribute."""
+    fig = load_fixture(MAPK)
+    out = tmp_path / "fig.svg"
+    render_figure(fig, out, autocrop=True)
+    text = out.read_text()
+    assert _VIEWBOX.search(text) is not None

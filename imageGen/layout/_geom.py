@@ -13,7 +13,7 @@ from typing import Callable
 import svgwrite.container
 
 from imageGen.ir.schema import EntityType, Figure
-from imageGen.primitives import proteins
+from imageGen.primitives import nucleic_acids, proteins
 
 # Per-EntityType bounding boxes (w, h), tracking each primitive's default
 # size in `primitives/proteins.py`. Used to inset arrow endpoints to the
@@ -25,7 +25,7 @@ ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
     EntityType.LIGAND:     (60.0, 30.0),
     EntityType.RECEPTOR:   (28.0, 60.0),
     EntityType.KINASE:     (70.0, 32.0),
-    EntityType.GENE:       (60.0, 30.0),
+    EntityType.GENE:       (80.0, 40.0),
     EntityType.METABOLITE: (60.0, 30.0),
     EntityType.CELL:       (60.0, 30.0),
     EntityType.ORGANELLE:  (60.0, 30.0),
@@ -42,13 +42,45 @@ ENTITY_TO_PRIMITIVE: dict[EntityType, Callable[..., svgwrite.container.Group]] =
     EntityType.LIGAND:     proteins.generic_protein,
     EntityType.RECEPTOR:   proteins.receptor,
     EntityType.KINASE:     proteins.kinase,
-    EntityType.GENE:       proteins.generic_protein,
+    EntityType.GENE:       nucleic_acids.gene_helix,
     EntityType.METABOLITE: proteins.generic_protein,
     EntityType.CELL:       proteins.generic_protein,
     EntityType.ORGANELLE:  proteins.generic_protein,
     EntityType.EQUIPMENT:  proteins.generic_protein,
     EntityType.SAMPLE:     proteins.generic_protein,
     EntityType.GENERIC:    proteins.generic_protein,
+}
+
+
+# ---------------------------------------------------------------------------
+# V2 / L6: primitive override registry.
+# Maps string name → primitive callable. IR authors can set
+# entity.style["primitive"] = "<name>" to render that entity with a
+# non-default primitive regardless of its EntityType. Unknown names trigger
+# a UserWarning in pathway_layout and fall back to the type default.
+# Add new entity-appropriate primitives here when introduced.
+# ---------------------------------------------------------------------------
+
+PRIMITIVE_REGISTRY: dict[str, Callable[..., svgwrite.container.Group]] = {
+    "generic_protein":       proteins.generic_protein,
+    "kinase":                proteins.kinase,
+    "receptor":              proteins.receptor,
+    "gpcr":                  proteins.gpcr,
+    "transcription_factor":  proteins.transcription_factor,
+    "gene_helix":            nucleic_acids.gene_helix,
+}
+
+# Canonical (w, h) for each registered primitive — used when a primitive
+# override is applied so arrow insets and collision bboxes stay correct.
+# Derived from ENTITY_BBOX for the first EntityType that maps to each
+# primitive; falls back to the generic-protein size for primitives not in
+# ENTITY_TO_PRIMITIVE (shouldn't happen with the current registry).
+PRIMITIVE_TO_BBOX: dict[Callable[..., svgwrite.container.Group], tuple[float, float]] = {
+    prim: next(
+        (ENTITY_BBOX[et] for et, p in ENTITY_TO_PRIMITIVE.items() if p is prim),
+        (60.0, 30.0),
+    )
+    for prim in PRIMITIVE_REGISTRY.values()
 }
 
 
