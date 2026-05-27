@@ -9,11 +9,11 @@ for anyone extending the project. For *using* imageGen, see
 
 Before writing code, read in order:
 
-1. **[ROADMAP.md](ROADMAP.md)** — phase status and key files.
-2. **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions
+1. **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions
    (D1–D4: IR-id tagging, watermarking, label auto-invoke, `smiles_map`).
-3. **[BACKLOG.md](BACKLOG.md)** — everything deliberately deferred; pick up
-   v2 work from here.
+2. **[BACKLOG.md](BACKLOG.md)** — open, in-scope defects.
+3. **[V3_FEATURES.md](V3_FEATURES.md)** — larger features parked for a
+   possible v3.
 4. **The pattern file for the area you're touching** — e.g. `primitives/proteins.py`
    for a primitive, `layout/reaction_layout.py` for a layout engine. Copy its style.
 

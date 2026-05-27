@@ -1,9 +1,12 @@
 # Backlog — rolling list of open issues
 
-This file tracks **open** work only. When an item lands, its row is deleted —
-git history and each version's PLAN.md write-up preserve the record. Active
-**V2.1** layout/primitive work is tracked in `PLAN.md` (items LT1–LT9); this
-file holds issues *outside* that plan plus longer-horizon stretch goals.
+This file tracks **open, in-scope defects and small improvements** only. When
+an item lands, its row is deleted — git history and each milestone's PLAN
+write-up preserve the record.
+
+- **Open defects / small improvements** → here.
+- **Larger future features (out of scope for v2.x)** → `V3_FEATURES.md`.
+- **Per-milestone implementation records** → git history.
 
 Priority: high = blocks reading/using the tool; medium = shows up in real
 figures soon; low = polish / advanced use.
@@ -12,43 +15,25 @@ figures soon; low = polish / advanced use.
 > (L1–L24, R1–R6, V1, P2–P3, ST1–ST5) are complete — see git history. V2.1
 > (LT1–LT10: ring + layered DAG layout, ALAP rank tightening, RNA + broken-DNA
 > primitives, the legibility trio, the `complex` entity type, SKILL.md sync +
-> scope-guard) is complete — landed 2026-05-26 / 2026-05-27. **v2.2**
-> (2026-05-27) is a maintenance milestone: package version bumped to `2.2.0`,
-> the two divergent SKILL.md docs reconciled onto the canonical repo reference
-> (stale `imageGen-v0.1` paths fixed, deployed skill regenerated from it), and a
-> live-render verification sweep. Suite green at 658.
+> scope-guard) landed 2026-05-26 / 2026-05-27. **v2.2** (2026-05-27) is a
+> maintenance milestone: package bumped to `2.2.0`, the two divergent SKILL.md
+> docs reconciled onto the canonical repo reference, and a live-render
+> verification sweep. Suite green at 658.
 
 ---
 
 ## Open issues
 
-### Primitives
-
-| # | Item | Source | Priority |
-|---|---|---|---|
-| P1 | True 3D ball-and-stick chemistry rendering. v1's `style="ball_stick"` is 2D (larger atom labels, wider bonds, a visual 3D lean); full 3D requires a rendering-pipeline rewrite. | `chemistry.py:8`; `phase2-step6-chemistry.md` | Low (Stretch) |
-
----
-
-## Stretch goals (post-V2.1, long-horizon)
-
-| # | Item | Source |
-|---|---|---|
-| S1 | Force-directed label placement for dense pathways | ROADMAP, TODO.txt |
-| S2 | Automatic palette selection based on entity types | ROADMAP, TODO.txt |
-| S3 | "Compile from BioPAX" — accept standardized pathway formats as input | ROADMAP, TODO.txt |
-| S4 | 3D protein structure integration via PyMOL handoff | ROADMAP, TODO.txt |
-| S5 | Animated / multi-frame figures for presentations | TODO.txt |
-| S6 | LaTeX export for direct manuscript inclusion | TODO.txt |
-| S7 | Per-arrow conditional rendering in pathways (different conditions per relation; currently only honored in reaction layout) | derived from R5 + L4 |
+_None._ All tracked defects through v2.2 are resolved. Out-of-scope feature
+ideas live in `V3_FEATURES.md`; wrong-figure reports go in `FEEDBACK.md`.
 
 ---
 
 ## How to use this file
 
-- **Open issues only.** When an item lands, delete its row — git history keeps
-  the record, and the implementation belongs in the session's PLAN.md, not here.
-- **Active V2.1 work** lives in `PLAN.md` (LT1–LT9). This file is for issues
-  *outside* that plan plus stretch goals.
-- **New work:** add a row in the right section in the same shape, with a
-  priority. Don't bury decisions in module docstrings alone.
+- **Open, in-scope issues only.** When an item lands, delete its row — git
+  history keeps the record, and the implementation belongs in the milestone's
+  PLAN write-up, not here.
+- **New work:** add a row with a priority and a one-line source. If it's a
+  larger future feature rather than a defect, put it in `V3_FEATURES.md`
+  instead.
