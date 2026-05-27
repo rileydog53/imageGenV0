@@ -27,9 +27,9 @@ hop. Use:
 - **`Write`/`Edit`** to create the spec or IR file.
 
 Paths: use the venv Python `~/Desktop/.venv/bin/python` (the `imageGen`
-package is installed there). The repo root is `~/Desktop/imageGen-v0.1/`;
+package is installed there). The repo root is `~/Desktop/imageGen-v2.1/`;
 fixtures cited as `tests/fixtures/<file>` live at
-`~/Desktop/imageGen-v0.1/tests/fixtures/<file>`. Write throwaway specs and
+`~/Desktop/imageGen-v2.1/tests/fixtures/<file>`. Write throwaway specs and
 output to `~/Desktop/scratch/`. `~` works fine in the Bash tool.
 
 > **If you are a chat assistant *without* a shell** (e.g. claude.ai with no
@@ -112,7 +112,7 @@ Archetype → required fixture file:
 | multi-panel figure | `three_panel_workflow.json` **AND** `graphical_abstract_mrna_vaccine.json` |
 
 Read it with the **`Read`** tool:
-`~/Desktop/imageGen-v0.1/tests/fixtures/<file>`.
+`~/Desktop/imageGen-v2.1/tests/fixtures/<file>`.
 
 ### Step 2 — Plan and output confirmation block
 
@@ -171,9 +171,13 @@ three verifiers and prints a one-line report:
 
 ```bash
 ~/Desktop/.venv/bin/python -m imageGen render-spec ~/Desktop/scratch/figure.yaml \
-    -o ~/Desktop/scratch/figure.png --verify \
+    -o ~/Desktop/scratch/figure.png --verify --autocrop \
     [--smiles-map ~/Desktop/scratch/smiles.json]   # reaction_scheme only
 ```
+
+`--autocrop` trims dead margin from the shipped figure **in place**, so it ships
+tight by default — unlike the older `--crop` (Step 7), which writes a separate
+`*_cropped` sibling and leaves the original untouched.
 
 - A **`pydantic.ValidationError`** means the spec is malformed — read the
   message, fix only what it names (common: a relation referencing an unknown
@@ -194,11 +198,11 @@ inline, then add a one- or two-sentence caption describing what it depicts.
 Do **not** use `open`, `osascript`, Preview, or any external viewer. If any
 element is illustrative/schematic rather than measured data, say so.
 
-### Step 7 — Offer to crop (only if there's excess whitespace)
+### Step 7 — Crop fallback (rarely needed)
 
-The default canvas can leave a wide margin of empty space around a small
-figure. If the Step 5 `VERIFY:` line reported **`needs_crop=True`** (or the
-displayed image obviously floats in whitespace), present the full figure
+With `--autocrop` in Step 5 the shipped figure is already trimmed in place, so
+`VERIFY:` should report **`needs_crop=False`**. Only if you skipped `--autocrop`
+or the displayed image still floats in whitespace: present the full figure
 first, then **ask the user**: *"Want me to crop in tighter on the figure?"*
 Do not crop unprompted.
 
@@ -318,6 +322,31 @@ must not overlap).
 
 ---
 
+## Encoding pitfalls — avoid these
+
+Three mis-encodings silently degrade output. Check the IR against them before
+rendering.
+
+**1. Reactions: parallel edges, not a chain.** A single-step multi-product
+reaction `A + B → C + D` is **parallel** reactant→product edges — `A→C` and
+`B→D` (or `A→C`, `B→C` if both feed one product). Do **not** write a chain like
+`A→C, B→C, C→D`: that makes `C` both a target *and* a source, so the engine
+reads it as a false intermediate (a multi-step reaction) and routes it
+differently. Use a chain `A→B→C` only when `B` is a **genuine** isolated
+intermediate in a multi-step sequence.
+
+**2. Decorations are glyphs on a relation, not entity nodes.** A phosphosite,
+N-/C-terminus, ubiquitin tag, methyl mark, etc. is **not** its own entity. Model
+the modification as the relation between modifier and substrate (e.g. a kinase
+`phosphorylates` its target — the "P" badge is drawn automatically). A separate
+`"P"`/`"phosphosite"` entity node clutters the graph and breaks layout.
+
+**3. Mechanisms use `mechanism_cartoon`, not `reaction_scheme`.** Arrow-pushing
+/ intermediates / transition states → `mechanism_cartoon`. Net transformations
+(reactants → products) → `reaction_scheme`.
+
+---
+
 ## Style presets
 
 Pass `--style` (or `style_preset` in the IR) to pick a journal aesthetic:
@@ -395,7 +424,8 @@ Do not retry the same command unchanged. Check:
   `--style {cell_press,nature,acs}`, `--format {svg,png,pdf}` (else inferred
   from suffix), `--dpi N` (default 300), `--smiles-map FILE.json`,
   `--no-labels`, `--strict-labels`, `--canvas WxH`, `--verify`,
-  `--crop` (+ `--crop-keep-aspect`, `--crop-margin FRAC`).
+  `--autocrop` (trim the shipped figure in place — preferred),
+  `--crop` (+ `--crop-keep-aspect`, `--crop-margin FRAC`; writes a sibling).
 - **Builder API** (`imageGen.ir.builder.build`): the same tuple-friendly
   shorthand the spec uses, for calling from Python.
 - **Example IRs**: every archetype has a worked example in
@@ -410,7 +440,7 @@ The fixture is the ground truth for IR structure — do not write JSON from
 memory.
 
 Worked examples — each `tests/fixtures/<file>` is a complete, validated IR.
-**Read** them at `~/Desktop/imageGen-v0.1/tests/fixtures/<file>`.
+**Read** them at `~/Desktop/imageGen-v2.1/tests/fixtures/<file>`.
 
 1. **"Show the MAPK kinase cascade."** → `pathway`. Entities Ras (protein),
    Raf/MEK/ERK (kinases); relations `activates` then `phosphorylates`.

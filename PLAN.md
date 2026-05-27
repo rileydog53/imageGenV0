@@ -1,10 +1,15 @@
 # PLAN — V2.1: Circular / Non-Linear Layout + Nucleic-Acid Primitives
 
-**Status:** Ready for a fresh agent to pick up. All issues below were found in a
-live natural-language testing run (2026-05-26) across 6 figures + 1 out-of-scope
-request. The current branch already has Waves 1–7 complete (L1–L24, R1–R6, V1,
-P1–P3, ST1–ST5) with **604 tests passing**; this plan covers the **next** body of
-work, none of which is started yet.
+**Status:** ✅ Complete — landed 2026-05-26 / 2026-05-27. All LT items below
+(LT1–LT10 + the `complex` entity type) are done and ticked; suite green at
+**658 tests**. The issues were found in a live natural-language testing run
+(2026-05-26) across 6 figures + 1 out-of-scope request, on top of Waves 1–7
+(L1–L24, R1–R6, V1, P1–P3, ST1–ST5).
+
+> **Current milestone: v2.2** (cleanup + live testing). The V2.1 layout/primitive
+> program documented here is finished; v2.2 covers the version bump to `2.2.0`,
+> the SKILL.md reconciliation, stale-path fixes, and a fresh live-render sweep.
+> This file is retained as the V2.1 implementation record.
 
 > How to use this file: work the issues top-to-bottom within each priority tier.
 > Each item carries **Symptom → Root cause → Files → Fix → Acceptance**. The three

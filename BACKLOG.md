@@ -12,7 +12,11 @@ figures soon; low = polish / advanced use.
 > (L1–L24, R1–R6, V1, P2–P3, ST1–ST5) are complete — see git history. V2.1
 > (LT1–LT10: ring + layered DAG layout, ALAP rank tightening, RNA + broken-DNA
 > primitives, the legibility trio, the `complex` entity type, SKILL.md sync +
-> scope-guard) is complete — landed 2026-05-26 / 2026-05-27.
+> scope-guard) is complete — landed 2026-05-26 / 2026-05-27. **v2.2**
+> (2026-05-27) is a maintenance milestone: package version bumped to `2.2.0`,
+> the two divergent SKILL.md docs reconciled onto the canonical repo reference
+> (stale `imageGen-v0.1` paths fixed, deployed skill regenerated from it), and a
+> live-render verification sweep. Suite green at 658.
 
 ---
 
