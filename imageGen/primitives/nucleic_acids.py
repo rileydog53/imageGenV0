@@ -604,6 +604,128 @@ def rna_helix(
     return group
 
 
+def mrna_helix(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (90.0, 40.0),
+    color: str | None = None,  # accepted for API parity; unused
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """Render an mRNA entity as an orange single strand with a 5' cap and a
+    poly(A) tail — the features that distinguish a mature mRNA from a bare RNA.
+
+    Mirrors `rna_helix` (orange `rna_segment`, label below) and adds a filled
+    cap disc at the 5' (left) terminus and an "AAA" poly(A) tail at the 3'
+    (right) terminus. The strand polyline is added first so `convention_check`
+    keys the RNA shape correctly.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    cx, cy = position
+    w, h = size
+
+    margin_x = max(4.0, w * 0.05)
+    amplitude = min(h * 0.30, float(s["rna_amplitude"]))
+    strand_cy = cy - h * 0.18
+    cap_r = max(3.0, h * 0.10)
+    left = cx - w / 2 + margin_x + cap_r * 1.8
+    right = cx + w / 2 - margin_x - h * 0.30
+
+    strand_grp = rna_segment(
+        (left, strand_cy), (right, strand_cy),
+        single_strand=True,
+        style_dict={**s, "rna_amplitude": amplitude},
+    )
+    group = svgwrite.container.Group()
+    group.add(strand_grp)
+
+    cap = svgwrite.shapes.Circle(
+        center=(cx - w / 2 + margin_x + cap_r, strand_cy), r=cap_r,
+        fill=str(s["rna_stroke"]), stroke=str(s["rna_stroke"]),
+    )
+    group.add(cap)
+
+    tail = svgwrite.text.Text(
+        "AAA",
+        insert=(round(right + 3, 2), round(strand_cy, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]) * 0.8,
+        fill=str(s["rna_stroke"]),
+    )
+    tail["text-anchor"] = "start"
+    tail["dominant-baseline"] = "central"
+    tail["font-weight"] = "bold"
+    group.add(tail)
+
+    lbl = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.35, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    lbl["text-anchor"] = "middle"
+    lbl["dominant-baseline"] = "central"
+    group.add(lbl)
+    return group
+
+
+def primer_helix(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (60.0, 36.0),
+    color: str | None = None,  # accepted for API parity; unused
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """Render an oligonucleotide primer as a short single DNA strand with a 3'
+    arrowhead marking the direction of polymerase extension.
+
+    Single-strand DNA (`dna_segment(double_helix=False)`, blue) so it reads as
+    DNA, kept short, with a filled arrowhead at the 3' (right) end. The strand
+    polyline is added first for `convention_check`.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    cx, cy = position
+    w, h = size
+
+    margin_x = max(4.0, w * 0.05)
+    amplitude = min(h * 0.26, float(s["dna_amplitude"]))
+    strand_cy = cy - h * 0.16
+    left = cx - w / 2 + margin_x
+    arrow = h * 0.18
+    right = cx + w / 2 - margin_x - arrow * 1.6
+
+    strand_grp = dna_segment(
+        (left, strand_cy), (right, strand_cy),
+        double_helix=False,
+        style_dict={**s, "dna_amplitude": amplitude},
+    )
+    group = svgwrite.container.Group()
+    group.add(strand_grp)
+
+    head = svgwrite.shapes.Polygon(
+        points=[
+            (right, strand_cy - arrow),
+            (right + arrow * 1.6, strand_cy),
+            (right, strand_cy + arrow),
+        ],
+        fill=str(s["dna_strand1_stroke"]),
+        stroke=str(s["dna_strand1_stroke"]),
+    )
+    group.add(head)
+
+    lbl = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.35, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    lbl["text-anchor"] = "middle"
+    lbl["dominant-baseline"] = "central"
+    group.add(lbl)
+    return group
+
+
 def chromatin(
     region: tuple[tuple[float, float], tuple[float, float]],
     condensation_level: float = 0.0,

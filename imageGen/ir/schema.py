@@ -38,6 +38,10 @@ class RelationType(str, Enum):
     TRANSLOCATES = "translocates"
     PHOSPHORYLATES = "phosphorylates"
     TRANSCRIBES = "transcribes"
+    CATALYZES = "catalyzes"
+    CLEAVES = "cleaves"
+    TRANSPORTS = "transports"
+    RECRUITS = "recruits"
     GENERIC = "generic"
 
 

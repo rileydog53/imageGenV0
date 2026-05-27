@@ -1,0 +1,514 @@
+"""Expansion entity-glyph primitives (v2.x add-on set).
+
+Schematic entity glyphs wired into ``ENTITY_TO_PRIMITIVE`` dispatch via the
+``PRIMITIVE_REGISTRY`` override mechanism (set ``entity.style["primitive"] =
+"<name>"``). They are *not* new ``EntityType``s — the IR schema is load-bearing
+— so an author opts into any of these on top of an existing entity type
+(usually ``protein``, ``organelle``, ``equipment``, or ``sample``).
+
+Every public function follows the canonical entity-primitive calling
+convention used by ``proteins.generic_protein`` so layout dispatch works
+transparently::
+
+    fn(label, position, size=(w, h), color=None, style_dict=None) -> Group
+
+The defining shape is always the **first** child added to the group (before
+the label), because ``convention_check`` keys an entity's expected shape off
+the first shape-tag it finds. The shape occupies the upper portion of the
+bounding box and the label sits below it, mirroring ``gene_helix`` so the
+collision footprint matches ``ENTITY_BBOX``.
+
+Glyph set:
+  Cell / signalling: antibody, ion_channel, transporter, pump, phosphatase,
+    ribosome, vesicle
+  Lab equipment:     flask, centrifuge, flow_cytometer, sequencer,
+    petri_dish, syringe
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+import svgwrite
+import svgwrite.container
+import svgwrite.path
+import svgwrite.shapes
+import svgwrite.text
+
+DEFAULT_STYLE: dict = {
+    # Cell / signalling glyphs
+    "antibody_fill": "#7BB6E0",
+    "antibody_stroke": "#1F4E79",
+    "channel_fill": "#9CC4A0",
+    "channel_stroke": "#3D6B43",
+    "transporter_fill": "#C19CD0",
+    "transporter_stroke": "#5B3173",
+    "pump_fill": "#F0B27A",
+    "pump_stroke": "#935116",
+    "pump_atp_fill": "#D32F2F",
+    "phosphatase_fill": "#80CBC4",
+    "phosphatase_stroke": "#00695C",
+    "ribosome_large_fill": "#B0A8D0",
+    "ribosome_small_fill": "#D4CEEA",
+    "ribosome_stroke": "#4A4070",
+    "vesicle_fill": "#FFE0B2",
+    "vesicle_stroke": "#E08A2E",
+    # Lab-equipment glyphs
+    "equip_fill": "#CFD8DC",
+    "equip_stroke": "#37474F",
+    "equip_accent": "#1565C0",
+    "glyph_stroke_width": 1.5,
+    # Shared label keys (keep synchronized with the other primitive modules
+    # so the master-preset union stays coherent)
+    "label_font_family": "Helvetica, Arial, sans-serif",
+    "label_font_size": 11,
+    "label_font_color": "#1A1A1A",
+}
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _label_below(
+    group: svgwrite.container.Group,
+    label: str,
+    cx: float,
+    cy: float,
+    h: float,
+    s: dict,
+) -> None:
+    """Add a centered label in the bottom strip of the bounding box."""
+    t = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.40, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    t["text-anchor"] = "middle"
+    t["dominant-baseline"] = "central"
+    group.add(t)
+
+
+def _sw(s: dict) -> float:
+    return float(s["glyph_stroke_width"])
+
+
+# ---------------------------------------------------------------------------
+# Cell / signalling glyphs
+# ---------------------------------------------------------------------------
+
+def antibody(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (50, 50),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Immunoglobulin: the canonical Y-shape (two Fab arms + an Fc stem)."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["antibody_fill"]
+    # Shape band: upper ~60% of the box.
+    top = cy - h * 0.42
+    fork = cy - h * 0.05          # where the two arms meet the stem
+    bottom = cy + h * 0.18
+    arm = w * 0.32
+    d = (
+        f"M {cx - arm:.2f},{top:.2f} L {cx:.2f},{fork:.2f} "
+        f"L {cx + arm:.2f},{top:.2f} M {cx:.2f},{fork:.2f} "
+        f"L {cx:.2f},{bottom:.2f}"
+    )
+    y = svgwrite.path.Path(d=d, fill="none", stroke=s["antibody_stroke"])
+    y["stroke-width"] = _sw(s) * 3.0
+    y["stroke-linecap"] = "round"
+    y["stroke-linejoin"] = "round"
+    g.add(y)
+    # Antigen-binding tips, drawn as small filled discs on the Fab ends.
+    for tx in (cx - arm, cx + arm):
+        tip = svgwrite.shapes.Circle(
+            center=(tx, top), r=max(2.5, h * 0.07),
+            fill=fill, stroke=s["antibody_stroke"],
+        )
+        tip["stroke-width"] = _sw(s)
+        g.add(tip)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def ion_channel(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (40, 50),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Ion channel: two facing trapezoids with a central conducting pore."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["channel_fill"]
+    top = cy - h * 0.42
+    bot = cy + h * 0.18
+    pore = w * 0.12
+    half = w * 0.42
+    for sign in (-1, 1):
+        outer = cx + sign * half
+        inner = cx + sign * pore
+        pts = [
+            (outer, top), (inner, top + h * 0.12),
+            (inner, bot - h * 0.12), (outer, bot),
+        ]
+        poly = svgwrite.shapes.Polygon(points=pts, fill=fill, stroke=s["channel_stroke"])
+        poly["stroke-width"] = _sw(s)
+        g.add(poly)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def transporter(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (40, 50),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Transporter: a membrane barrel with a clefted (occluded) center."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["transporter_fill"]
+    top = cy - h * 0.42
+    bot = cy + h * 0.18
+    half = w * 0.40
+    notch = w * 0.16
+    pts = [
+        (cx - half, top), (cx + half, top),
+        (cx + half, bot), (cx + notch, bot),
+        (cx + notch, cy - h * 0.05), (cx - notch, cy - h * 0.05),
+        (cx - notch, bot), (cx - half, bot),
+    ]
+    body = svgwrite.shapes.Polygon(points=pts, fill=fill, stroke=s["transporter_stroke"])
+    body["stroke-width"] = _sw(s)
+    g.add(body)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def pump(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (44, 52),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Active transport pump: a barrel with an ATP burst marking energy use."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["pump_fill"]
+    top = cy - h * 0.42
+    bot = cy + h * 0.16
+    half = w * 0.34
+    pts = [
+        (cx - half, top), (cx + half, top),
+        (cx + half * 0.7, bot), (cx - half * 0.7, bot),
+    ]
+    barrel = svgwrite.shapes.Polygon(points=pts, fill=fill, stroke=s["pump_stroke"])
+    barrel["stroke-width"] = _sw(s)
+    g.add(barrel)
+    # ATP energy burst (small star) at the upper-right.
+    bx, by, r = cx + half, top, max(4.0, h * 0.13)
+    star = svgwrite.shapes.Circle(center=(bx, by), r=r, fill=s["pump_atp_fill"], stroke=s["pump_stroke"])
+    star["stroke-width"] = _sw(s)
+    g.add(star)
+    g.add(_atp_text(bx, by, s))
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def _atp_text(bx: float, by: float, s: dict) -> svgwrite.text.Text:
+    t = svgwrite.text.Text(
+        "ATP", insert=(round(bx, 2), round(by, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]) * 0.62,
+        fill="#FFFFFF",
+    )
+    t["text-anchor"] = "middle"
+    t["dominant-baseline"] = "central"
+    t["font-weight"] = "bold"
+    return t
+
+
+def phosphatase(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (70, 32),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Phosphatase: an enzyme hexagon (teal), the dephosphorylating counterpart
+    to the kinase glyph — same hexagon family, distinct palette."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["phosphatase_fill"]
+    shape_cy = cy - h * 0.12
+    half_w, half_h = w / 2, h * 0.36
+    chamfer = (half_h * 2) * 0.4
+    pts = [
+        (cx - half_w + chamfer, shape_cy - half_h),
+        (cx + half_w - chamfer, shape_cy - half_h),
+        (cx + half_w, shape_cy),
+        (cx + half_w - chamfer, shape_cy + half_h),
+        (cx - half_w + chamfer, shape_cy + half_h),
+        (cx - half_w, shape_cy),
+    ]
+    hexagon = svgwrite.shapes.Polygon(points=pts, fill=fill, stroke=s["phosphatase_stroke"])
+    hexagon["stroke-width"] = _sw(s)
+    g.add(hexagon)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def ribosome(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (50, 50),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Ribosome: stacked large + small subunits (two nested ovals)."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    large_fill = color or s["ribosome_large_fill"]
+    shape_cy = cy - h * 0.10
+    large = svgwrite.shapes.Ellipse(
+        center=(cx, shape_cy + h * 0.06), r=(w * 0.42, h * 0.26),
+        fill=large_fill, stroke=s["ribosome_stroke"],
+    )
+    large["stroke-width"] = _sw(s)
+    g.add(large)
+    small = svgwrite.shapes.Ellipse(
+        center=(cx, shape_cy - h * 0.18), r=(w * 0.34, h * 0.15),
+        fill=s["ribosome_small_fill"], stroke=s["ribosome_stroke"],
+    )
+    small["stroke-width"] = _sw(s)
+    g.add(small)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def vesicle(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (44, 44),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Vesicle: a membrane-bound circle (lipid sphere)."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["vesicle_fill"]
+    r = min(w, h) * 0.34
+    circle = svgwrite.shapes.Circle(
+        center=(cx, cy - h * 0.12), r=r, fill=fill, stroke=s["vesicle_stroke"],
+    )
+    circle["stroke-width"] = _sw(s) * 1.6
+    g.add(circle)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+# ---------------------------------------------------------------------------
+# Lab-equipment glyphs
+# ---------------------------------------------------------------------------
+
+def flask(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (44, 56),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Erlenmeyer flask: narrow neck flaring into a conical body."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["equip_fill"]
+    top = cy - h * 0.44
+    bot = cy + h * 0.16
+    neck = w * 0.12
+    base = w * 0.40
+    shoulder = top + h * 0.22
+    d = (
+        f"M {cx - neck:.2f},{top:.2f} L {cx + neck:.2f},{top:.2f} "
+        f"L {cx + neck:.2f},{shoulder:.2f} L {cx + base:.2f},{bot:.2f} "
+        f"L {cx - base:.2f},{bot:.2f} L {cx - neck:.2f},{shoulder:.2f} Z"
+    )
+    body = svgwrite.path.Path(d=d, fill=fill, stroke=s["equip_stroke"])
+    body["stroke-width"] = _sw(s)
+    body["stroke-linejoin"] = "round"
+    g.add(body)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def centrifuge(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (54, 54),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Centrifuge: a circular rotor housing with a spin indicator."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["equip_fill"]
+    shape_cy = cy - h * 0.10
+    r = min(w, h) * 0.36
+    housing = svgwrite.shapes.Circle(center=(cx, shape_cy), r=r, fill=fill, stroke=s["equip_stroke"])
+    housing["stroke-width"] = _sw(s)
+    g.add(housing)
+    hub = svgwrite.shapes.Circle(center=(cx, shape_cy), r=r * 0.22, fill=s["equip_accent"], stroke=s["equip_stroke"])
+    hub["stroke-width"] = _sw(s)
+    g.add(hub)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def flow_cytometer(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (64, 50),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Flow cytometer: an instrument box with a droplet-stream nozzle."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["equip_fill"]
+    bw, bh = w * 0.7, h * 0.5
+    bx, by = cx - bw / 2, cy - h * 0.42
+    box = svgwrite.shapes.Rect(insert=(bx, by), size=(bw, bh), rx=3, ry=3, fill=fill, stroke=s["equip_stroke"])
+    box["stroke-width"] = _sw(s)
+    g.add(box)
+    # Droplet stream below the nozzle.
+    for i in range(3):
+        drop = svgwrite.shapes.Circle(
+            center=(cx, by + bh + (i + 1) * h * 0.10), r=max(1.6, h * 0.035),
+            fill=s["equip_accent"], stroke="none",
+        )
+        g.add(drop)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def sequencer(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (64, 48),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Sequencer: a benchtop instrument box with a status screen."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["equip_fill"]
+    bw, bh = w * 0.78, h * 0.52
+    bx, by = cx - bw / 2, cy - h * 0.42
+    box = svgwrite.shapes.Rect(insert=(bx, by), size=(bw, bh), rx=4, ry=4, fill=fill, stroke=s["equip_stroke"])
+    box["stroke-width"] = _sw(s)
+    g.add(box)
+    screen = svgwrite.shapes.Rect(
+        insert=(bx + bw * 0.12, by + bh * 0.2), size=(bw * 0.5, bh * 0.5),
+        rx=2, ry=2, fill=s["equip_accent"], stroke=s["equip_stroke"],
+    )
+    screen["stroke-width"] = _sw(s) * 0.7
+    g.add(screen)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def petri_dish(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (60, 40),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Petri dish: a shallow round dish seen at a slight top-down angle."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["equip_fill"]
+    shape_cy = cy - h * 0.10
+    dish = svgwrite.shapes.Ellipse(
+        center=(cx, shape_cy), r=(w * 0.42, h * 0.26),
+        fill=fill, stroke=s["equip_stroke"],
+    )
+    dish["stroke-width"] = _sw(s)
+    g.add(dish)
+    inner = svgwrite.shapes.Ellipse(
+        center=(cx, shape_cy), r=(w * 0.34, h * 0.18),
+        fill="none", stroke=s["equip_stroke"],
+    )
+    inner["stroke-width"] = _sw(s) * 0.6
+    g.add(inner)
+    _label_below(g, label, cx, cy, h, s)
+    return g
+
+
+def syringe(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (76, 30),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Syringe: a horizontal barrel with a plunger and needle."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["equip_fill"]
+    shape_cy = cy - h * 0.12
+    barrel_w, barrel_h = w * 0.5, h * 0.5
+    bx = cx - w * 0.34
+    barrel = svgwrite.shapes.Rect(
+        insert=(bx, shape_cy - barrel_h / 2), size=(barrel_w, barrel_h),
+        rx=2, ry=2, fill=fill, stroke=s["equip_stroke"],
+    )
+    barrel["stroke-width"] = _sw(s)
+    g.add(barrel)
+    # Plunger (left) and needle (right).
+    plunger = svgwrite.shapes.Line(
+        start=(bx - w * 0.14, shape_cy), end=(bx, shape_cy), stroke=s["equip_stroke"],
+    )
+    plunger["stroke-width"] = _sw(s) * 2.0
+    g.add(plunger)
+    needle = svgwrite.shapes.Line(
+        start=(bx + barrel_w, shape_cy), end=(cx + w * 0.46, shape_cy), stroke=s["equip_stroke"],
+    )
+    needle["stroke-width"] = _sw(s)
+    g.add(needle)
+    _label_below(g, label, cx, cy, h, s)
+    return g

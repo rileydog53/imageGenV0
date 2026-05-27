@@ -25,6 +25,12 @@ DEFAULT_STYLE: dict = {
     "arrow_head_size": 10,   # pixels; applied to both filled and open heads
     "t_bar_width": 12,       # total width of the T-bar used in inhibition arrows
     "dash_array": "6,4",     # stroke-dasharray for translocation dashes
+    # v2.x expansion relation arrows
+    "catalysis_circle_radius": 5.0,   # open-circle terminus (catalysis convention)
+    "block_arrow_width": 11.0,        # body width of the hollow transport block arrow
+    "recruit_dash": "3,3",            # finer dash for the recruitment shaft
+    "recruit_dot_radius": 3.5,        # filled-dot terminus for recruitment
+    "cleave_tick_len": 7.0,           # length of the scissors cut-mark ticks
     # Labels (shared across all primitive modules — keep these values
     # synchronized with proteins.py, membranes.py, nucleic_acids.py, cells.py,
     # chemistry.py, lab_equipment.py so the Phase 4 master preset union
@@ -360,6 +366,165 @@ def translocation_arrow(
     line["stroke-dasharray"] = dash
     g.add(line)
     g.add(_open_triangle_head(end, dx, dy, hs, stroke, sw))
+    return g
+
+
+def catalysis_arrow(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    waypoints: Optional[list[tuple[float, float]]] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Catalysis: solid line with an open-circle terminus at *end*.
+
+    Convention: an open circle (not a triangle or T-bar) marks catalysis /
+    enzymatic stimulation — the enzyme is not consumed, so the head reads as a
+    contact point rather than a directed conversion.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    stroke = s["stroke"]
+    sw = float(s["stroke_width"])
+    r = float(s["catalysis_circle_radius"])
+
+    if waypoints and len(waypoints) >= 2:
+        dx, dy = _unit_vector(waypoints[-2], waypoints[-1])
+        tip = waypoints[-1]
+    else:
+        dx, dy = _unit_vector(start, end)
+        tip = end
+    center = (tip[0] - dx * r, tip[1] - dy * r)
+    shaft_end = (center[0] - dx * r, center[1] - dy * r)
+
+    if waypoints and len(waypoints) >= 2:
+        g.add(_waypoint_path(list(waypoints[:-1]) + [shaft_end], stroke, sw))
+    else:
+        line = svgwrite.shapes.Line(start=start, end=shaft_end, stroke=stroke)
+        line["stroke-width"] = sw
+        g.add(line)
+
+    circle = svgwrite.shapes.Circle(center=center, r=r, fill="none", stroke=stroke)
+    circle["stroke-width"] = sw
+    g.add(circle)
+    return g
+
+
+def cleavage_arrow(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    waypoints: Optional[list[tuple[float, float]]] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Cleavage / proteolysis: solid line + filled head, with a double-tick cut
+    mark across the shaft near the tip (a schematic "scissors" cut)."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    stroke = s["stroke"]
+    sw = float(s["stroke_width"])
+    hs = float(s["arrow_head_size"])
+    tick = float(s["cleave_tick_len"])
+
+    if waypoints and len(waypoints) >= 2:
+        dx, dy = _unit_vector(waypoints[-2], waypoints[-1])
+        tip = waypoints[-1]
+        shaft_tip = (tip[0] - dx * hs, tip[1] - dy * hs)
+        g.add(_waypoint_path(list(waypoints[:-1]) + [shaft_tip], stroke, sw))
+    else:
+        dx, dy = _unit_vector(start, end)
+        tip = end
+        shaft_tip = (tip[0] - dx * hs, tip[1] - dy * hs)
+        line = svgwrite.shapes.Line(start=start, end=shaft_tip, stroke=stroke)
+        line["stroke-width"] = sw
+        g.add(line)
+
+    g.add(_filled_triangle_head(tip, dx, dy, hs, stroke))
+
+    # Two short parallel ticks across the shaft, just behind the head.
+    px, py = _perp_vector(dx, dy)
+    for off in (hs * 1.6, hs * 2.3):
+        cx, cy = tip[0] - dx * off, tip[1] - dy * off
+        cut = svgwrite.shapes.Line(
+            start=(cx + px * tick / 2, cy + py * tick / 2),
+            end=(cx - px * tick / 2, cy - py * tick / 2),
+            stroke=stroke,
+        )
+        cut["stroke-width"] = sw
+        g.add(cut)
+    return g
+
+
+def transport_arrow(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    waypoints: Optional[list[tuple[float, float]]] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Transport / flux: a hollow block arrow conveying bulk movement of
+    material (distinct from the thin activation line).
+
+    Drawn straight from tail to tip; with waypoints, the first and last points
+    serve as tail and tip (elbow routing is not used for the block body)."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    stroke = s["stroke"]
+    sw = float(s["stroke_width"])
+    bw = float(s["block_arrow_width"])
+
+    if waypoints and len(waypoints) >= 2:
+        tail, tip = waypoints[0], waypoints[-1]
+    else:
+        tail, tip = start, end
+    dx, dy = _unit_vector(tail, tip)
+    px, py = _perp_vector(dx, dy)
+    head_len = bw * 1.6
+    body_end = (tip[0] - dx * head_len, tip[1] - dy * head_len)
+    hw = bw / 2  # body half-width
+
+    def pt(base, along, perp):
+        return (base[0] + dx * along + px * perp, base[1] + dy * along + py * perp)
+
+    pts = [
+        pt(tail, 0, hw), pt(body_end, 0, hw), pt(body_end, 0, bw),
+        tip, pt(body_end, 0, -bw), pt(body_end, 0, -hw), pt(tail, 0, -hw),
+    ]
+    block = svgwrite.shapes.Polygon(points=pts, fill="none", stroke=stroke)
+    block["stroke-width"] = sw
+    block["stroke-linejoin"] = "miter"
+    g.add(block)
+    return g
+
+
+def recruitment_arrow(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    waypoints: Optional[list[tuple[float, float]]] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """Recruitment: a finely-dashed line ending in a small filled dot, reading
+    as "A is recruited to B" without implying catalysis or conversion."""
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    stroke = s["stroke"]
+    sw = float(s["stroke_width"])
+    r = float(s["recruit_dot_radius"])
+    dash = str(s["recruit_dash"])
+
+    if waypoints and len(waypoints) >= 2:
+        dx, dy = _unit_vector(waypoints[-2], waypoints[-1])
+        tip = waypoints[-1]
+        shaft_end = (tip[0] - dx * r, tip[1] - dy * r)
+        g.add(_waypoint_path(list(waypoints[:-1]) + [shaft_end], stroke, sw, dash=dash))
+    else:
+        dx, dy = _unit_vector(start, end)
+        tip = end
+        shaft_end = (tip[0] - dx * r, tip[1] - dy * r)
+        line = svgwrite.shapes.Line(start=start, end=shaft_end, stroke=stroke)
+        line["stroke-width"] = sw
+        line["stroke-dasharray"] = dash
+        g.add(line)
+
+    dot = svgwrite.shapes.Circle(center=tip, r=r, fill=stroke, stroke="none")
+    g.add(dot)
     return g
 
 

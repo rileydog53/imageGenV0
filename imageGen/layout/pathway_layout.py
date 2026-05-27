@@ -571,6 +571,10 @@ RELATION_TO_ARROW: dict[RelationType, Callable[..., svgwrite.container.Group]] =
     RelationType.TRANSLOCATES:   arrows.translocation_arrow,
     RelationType.PHOSPHORYLATES: _phosphorylation_arrow,  # V2/L4: annotated with 'P' badge
     RelationType.TRANSCRIBES:    arrows.activation_arrow,
+    RelationType.CATALYZES:      arrows.catalysis_arrow,
+    RelationType.CLEAVES:        arrows.cleavage_arrow,
+    RelationType.TRANSPORTS:     arrows.transport_arrow,
+    RelationType.RECRUITS:       arrows.recruitment_arrow,
     RelationType.GENERIC:        arrows.activation_arrow,
 }
 

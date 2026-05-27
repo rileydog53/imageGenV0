@@ -276,6 +276,24 @@ never both.
 `type` ∈ `protein`, `complex`, `ligand`, `receptor`, `kinase`, `gene`, `rna`,
 `metabolite`, `cell`, `organelle`, `equipment`, `sample`, `generic`.
 
+#### Glyph overrides — `style.primitive`
+
+The `type` above picks a default shape. To render an entity with a more
+specific glyph, set `style.primitive` to one of the names below — the entity
+keeps its `type` (use the closest one) but draws as the chosen glyph. Unknown
+names warn and fall back to the type default.
+
+| Theme | `style.primitive` values |
+|---|---|
+| Proteins / enzymes | `kinase`, `phosphatase`, `gpcr`, `receptor`, `transcription_factor`, `protein_complex`, `antibody` |
+| Membrane transport | `ion_channel`, `transporter`, `pump` |
+| Subcellular | `ribosome`, `vesicle` |
+| Nucleic acids | `gene_helix` (DNA), `rna_helix` (RNA), `mrna_helix` (5' cap + polyA), `primer_helix` (3' arrow) |
+| Lab equipment | `flask`, `centrifuge`, `flow_cytometer`, `sequencer`, `petri_dish`, `syringe` |
+
+Example: `{"id": "igg", "type": "protein", "label": "IgG", "style":
+{"primitive": "antibody"}}`.
+
 ### `Compartment`
 
 `id` (unique), `type`, `label`. `type` ∈ `extracellular`, `membrane`,
@@ -292,8 +310,11 @@ never both.
 | `conditions` | `ReactionConditions` or object | no | reaction context |
 
 `type` ∈ `activates`, `inhibits`, `binds`, `translocates`, `phosphorylates`,
-`transcribes`, `generic`. Conventions: `activates` → solid arrow,
-`inhibits` → T-bar.
+`transcribes`, `catalyzes`, `cleaves`, `transports`, `recruits`, `generic`.
+Conventions: `activates` → solid filled arrow; `inhibits` → T-bar;
+`binds` → double-headed; `translocates` → dashed open head;
+`catalyzes` → open-circle terminus; `cleaves` → arrow with a cut-mark;
+`transports` → hollow block arrow; `recruits` → dashed line ending in a dot.
 
 ### `ReactionConditions` (for `relation.conditions`)
 

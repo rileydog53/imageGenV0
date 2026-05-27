@@ -44,8 +44,8 @@ from pathlib import Path
 from typing import Iterator, Literal
 
 from imageGen.ir.schema import Archetype, Figure, RelationType
-from imageGen.layout._geom import ENTITY_TO_PRIMITIVE
-from imageGen.primitives import nucleic_acids, proteins
+from imageGen.layout._geom import ENTITY_TO_PRIMITIVE, PRIMITIVE_REGISTRY
+from imageGen.primitives import glyphs, nucleic_acids, proteins
 from imageGen.render.compositor import scoped_id
 
 _Kind = Literal["inhibition_arrow", "entity_shape"]
@@ -66,6 +66,22 @@ _PRIMITIVE_SHAPE = {
     proteins.transcription_factor: "rect",
     nucleic_acids.gene_helix: "polyline",
     nucleic_acids.rna_helix: "polyline",
+    # v2.x expansion glyphs — tag of the first shape each draws
+    glyphs.antibody: "path",
+    glyphs.ion_channel: "polygon",
+    glyphs.transporter: "polygon",
+    glyphs.pump: "polygon",
+    glyphs.phosphatase: "polygon",
+    glyphs.ribosome: "ellipse",
+    glyphs.vesicle: "circle",
+    glyphs.flask: "path",
+    glyphs.centrifuge: "circle",
+    glyphs.flow_cytometer: "rect",
+    glyphs.sequencer: "rect",
+    glyphs.petri_dish: "ellipse",
+    glyphs.syringe: "rect",
+    nucleic_acids.mrna_helix: "polyline",
+    nucleic_acids.primer_helix: "polyline",
 }
 
 
@@ -147,7 +163,16 @@ def _check_entity_shapes(
         group = groups.get(scoped_id(entity.id, panel_chain))
         if group is None:
             continue  # missing element — semantic_check's responsibility
-        expected = _PRIMITIVE_SHAPE[ENTITY_TO_PRIMITIVE[entity.type]]
+        # Respect a per-entity primitive override (entity.style["primitive"]),
+        # mirroring pathway_layout's dispatch: a known override name selects
+        # that glyph; an unknown name falls back to the type default.
+        override_name = (entity.style or {}).get("primitive")
+        prim = (
+            PRIMITIVE_REGISTRY.get(override_name, ENTITY_TO_PRIMITIVE[entity.type])
+            if override_name is not None
+            else ENTITY_TO_PRIMITIVE[entity.type]
+        )
+        expected = _PRIMITIVE_SHAPE[prim]
         actual = next(
             (_tag(el) for el in group.iter() if _tag(el) in _SHAPE_TAGS), None
         )

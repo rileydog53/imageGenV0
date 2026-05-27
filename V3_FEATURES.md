@@ -20,13 +20,19 @@ Priority is rough intent, not commitment.
 | V3-L2 | **Force-directed label placement** for dense pathways (replace the greedy relax-and-retry ladder). | Current placement degrades gracefully but isn't globally optimal. | Medium |
 | V3-L3 | **Per-arrow conditional rendering in pathways** — different reagents/conditions per relation, as reaction layout already honors. | Schema supports `relation.conditions`; pathway layout doesn't draw them yet. | Low |
 
-## Chemistry & molecular structure
+## Chemistry & molecular-structure rendering track (parked — not attempting in v2.x)
+
+The whole chemistry-rendering deepening is deferred as one track. C3 is the
+enabler the two arrow/structure items depend on; C1 is the pipeline rewrite at
+the end.
 
 | # | Feature | Why deferred | Priority |
 |---|---|---|---|
-| V3-C1 | **True 3D ball-and-stick** chemistry rendering. Today `style="ball_stick"` is a 2D approximation (bigger atom labels, wider bonds, a visual lean). | Full 3D requires a rendering-pipeline rewrite. | Low |
+| V3-C3 | **Per-element ids for `reaction_scheme`** groups so `convention_check` / `semantic_check` can audit each molecule, not just the composite `reaction_0` anchor. **Enabler** for C4/C5. | RDKit emits one composite SVG group today. | Medium |
+| V3-C4 | **Curved mechanism arrows** (arrow-pushing) anchored on specific atoms. | Needs precise atom anchoring → depends on C3's per-element ids. | Low |
+| V3-C5 | **Newman / chair projections** for conformational chemistry. | Specialized custom geometry outside the RDKit 2D path. | Low |
+| V3-C1 | **True 3D ball-and-stick** chemistry rendering. Today `style="ball_stick"` is a 2D approximation (bigger atom labels, wider bonds, a visual lean). | Full 3D requires a rendering-pipeline rewrite; do last. | Low |
 | V3-C2 | **3D protein structure integration** via a PyMOL handoff (ribbon/surface renders dropped into a panel). | Out of the vector-schematic scope; needs an external renderer bridge. | Low |
-| V3-C3 | **Per-element ids for `reaction_scheme`** groups so `convention_check` / `semantic_check` can audit each molecule, not just the composite `reaction_0` anchor. | RDKit emits one composite SVG group today. | Low |
 
 ## Input & interoperability
 
