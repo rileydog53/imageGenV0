@@ -43,7 +43,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
 
 ## P0 — Layout engine: circular & non-linear diagramming
 
-### LT1 — Circular / ring layout for cyclic pathways  ☐
+### LT1 — Circular / ring layout for cyclic pathways  ☑
 - **Symptom:** The Krebs cycle (fig 4) renders as a single horizontal band. The
   closing edge `Oxaloacetate → Citrate` and the rank back-edges arch over the top
   as long lane-routed arrows. It does not read as a cycle.
@@ -66,7 +66,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
   as arrows between adjacent nodes and no long over-arching lane arrows; linear
   fixtures (mapk_cascade) byte-identical unless they opt in.
 
-### LT2 — Non-linear DAG layout: ranked convergence / divergence  ☐
+### LT2 — Non-linear DAG layout: ranked convergence / divergence  ☑
 - **Symptom:** (a) Coagulation (fig 5): intrinsic (XII→XI→IX) and extrinsic
   (TF→VII) arms both feeding Factor X, plus cofactor V feeding prothrombin, collapse
   to a flat row; convergence is invisible and arrows arc the full width. (b) CRISPR
@@ -90,7 +90,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
   right rank order; `crispr_cas9.json` reads Cas9+sgRNA → RNP → PAM/R-loop → DSB in
   order with no arrow crossings.
 
-### LT7 — Broken DNA strand primitive (double-strand break glyph)  ☐
+### LT7 — Broken DNA strand primitive (double-strand break glyph)  ☑
 - **Symptom:** In the CRISPR fig the "Double-strand break" entity renders as an
   ordinary intact double helix — semantically wrong; a DSB should show a gap.
 - **Root cause:** `nucleic_acids.dna_segment` has no break/gap mode; `gene_helix`
@@ -108,7 +108,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
   strand polylines with a coordinate gap at the break; the CRISPR DSB node visibly
   shows the break.
 
-### LT8 — RNA entity type + routing (wire the existing `rna_segment`)  ☐
+### LT8 — RNA entity type + routing (wire the existing `rna_segment`)  ☑
 - **Symptom:** sgRNA in the CRISPR fig rendered as a blue **DNA double helix**, not
   an RNA strand. RNA species have no way to render correctly.
 - **Root cause:** `nucleic_acids.rna_segment` (orange single strand) exists but is
@@ -129,7 +129,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
 
 ## P1 — Legibility defects (these FAIL `--verify`)
 
-### LT3 — Phosphorylation "P" badge collides with the arrow label  ☐
+### LT3 — Phosphorylation "P" badge collides with the arrow label  ☑
 - **Symptom:** MAPK fig: legibility FAIL — the red "P" badge and the relation label
   ("translocate") both sit at the arrow midpoint and overlap.
 - **Root cause:** `pathway_layout._phosphorylation_arrow` draws the badge at
@@ -145,7 +145,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
   perpendicular side opposite the badge. (a) is more general.
 - **Acceptance:** `mapk` repro renders with `--verify` reporting `legibility=OK`.
 
-### LT4 — Panel-local label placement ignores panel cell width  ☐
+### LT4 — Panel-local label placement ignores panel cell width  ☑
 - **Symptom:** scRNA-seq fig: entity labels overlap badly inside the narrow panel
   columns ('Tissue sample' / 'Enzymatic digestion'); legibility FAIL.
 - **Root cause:** `compositor._place_labels_per_panel` passes the **full figure
@@ -162,7 +162,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
   labels get horizontal room.
 - **Acceptance:** `scrnaseq` repro renders with `legibility=OK`.
 
-### LT5 — `needs_crop=True` on nearly every figure (autocrop not on the deliverable)  ☐
+### LT5 — `needs_crop=True` on nearly every figure (autocrop not on the deliverable)  ☑
 - **Symptom:** Every figure reports `needs_crop=True`; figures ship with dead margin.
 - **Root cause:** L22 added `render_figure(autocrop=...)` but it defaults **False**,
   and neither the CLI nor the skill passes it. The existing `--crop` flag writes a
@@ -182,7 +182,7 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
 
 ## P2 — Authoring correctness & robustness
 
-### LT6 — SKILL.md schema enum list is wrong  ☐
+### LT6 — SKILL.md schema enum list is wrong  ☑
 - **Symptom:** The skill prompt lists entity types `process`, `step`, `complex` and
   relation types `produces`, `consumes` — **all rejected** by the validator. Hit on
   3 of 6 figures, each needing a fix-and-rerun.
@@ -199,8 +199,15 @@ Reproduction fixtures: `tests/fixtures/krebs_cycle.json`,
   is generic" smell; `complex` as an entity type is commonly wanted. If added, update
   schema + dispatch + convention_check + tests, not just the doc.
 - **Acceptance:** Every reproduction fixture validates **without** type remapping.
+- **Resolution (2026-05-26):** SKILL.md enum lists synced to the schema (entity,
+  relation, **and** compartment types; corrected the `contains`→`location`
+  compartment shape and the `conditions` fields). Add-types decision: **added
+  `EntityType.COMPLEX`** (renders as two overlapping rounded rects via
+  `proteins.protein_complex`; wired through `_geom`, `convention_check`, SKILL.md,
+  tests). Declined `produces`/`consumes` (overlap existing `reaction_scheme`
+  reactant→product modeling) — left as a future option.
 
-### LT9 — Formalize the out-of-scope scope-guard in SKILL.md  ☐
+### LT9 — Formalize the out-of-scope scope-guard in SKILL.md  ☑
 - **Symptom:** The photorealistic-dog decline (fig 7) worked, but only because the
   agent recognised scope ad-hoc. Nothing in the skill formally instructs refusal.
 - **Root cause:** SKILL.md describes what the skill *does* but has no explicit "refuse

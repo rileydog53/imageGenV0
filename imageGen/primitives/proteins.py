@@ -139,6 +139,60 @@ def generic_protein(
     return g
 
 
+def protein_complex(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (72, 38),
+    color: Optional[str] = None,
+    style_dict: Optional[dict] = None,
+) -> svgwrite.container.Group:
+    """
+    Multi-subunit complex: two overlapping rounded rectangles + centered label.
+
+    Convention: a bound assembly of subunits. The two diagonally-offset
+    rounded rects read as "more than one protein joined together", which
+    distinguishes a complex from a single generic protein (one rect). The two
+    subunits together exactly span ``size``; the label is centered over the
+    union. Reuses the generic-protein fill/stroke so it harmonizes with the
+    protein family across presets.
+
+    Args:
+        label:    text rendered centered over the assembly
+        position: (x, y) center of the bounding box
+        size:     (width, height) of the full bounding box (both subunits)
+        color:    optional fill override (defaults to ``style["protein_fill"]``)
+        style_dict:    presentation attrs dict; falls back to DEFAULT_STYLE
+
+    Returns:
+        ``svgwrite.container.Group`` with two rects (back, then front) and the label.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    g = svgwrite.container.Group()
+    cx, cy = position
+    w, h = size
+    fill = color or s["protein_fill"]
+    sw = float(s["protein_stroke_width"])
+    r = float(s["protein_corner_radius"])
+
+    # Each subunit is smaller than the box; the diagonal offset makes the two
+    # together span the full (w, h) so the bbox matches ENTITY_BBOX[COMPLEX].
+    sub_w, sub_h = w * 0.7, h * 0.74
+    off_x = (w - sub_w) / 2
+    off_y = (h - sub_h) / 2
+    for ox, oy in ((off_x, off_y), (-off_x, -off_y)):  # back (lower-right), front (upper-left)
+        rect = svgwrite.shapes.Rect(
+            insert=(cx + ox - sub_w / 2, cy + oy - sub_h / 2),
+            size=(sub_w, sub_h),
+            rx=r, ry=r,
+            fill=fill,
+            stroke=s["protein_stroke"],
+        )
+        rect["stroke-width"] = sw
+        g.add(rect)
+    g.add(_centered_label(label, cx, cy, s))
+    return g
+
+
 def kinase(
     label: str,
     position: tuple[float, float],

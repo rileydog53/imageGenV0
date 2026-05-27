@@ -1,0 +1,30 @@
+{
+  "archetype": "workflow",
+  "title": "scRNA-seq workflow",
+  "panels": [
+    {"id": "p1", "title": "Dissociation", "grid": [0, 0, 1, 1],
+     "content": {"archetype": "workflow",
+       "entities": [
+         {"id": "tissue", "type": "sample", "label": "Tissue sample"},
+         {"id": "digest", "type": "equipment", "label": "Enzymatic digestion"}],
+       "relations": [{"source": "tissue", "target": "digest", "type": "generic", "label": "dissociate"}]}},
+    {"id": "p2", "title": "Encapsulation", "grid": [0, 1, 1, 1],
+     "content": {"archetype": "workflow",
+       "entities": [
+         {"id": "cells", "type": "sample", "label": "Single cells"},
+         {"id": "droplets", "type": "sample", "label": "Barcoded droplets"}],
+       "relations": [{"source": "cells", "target": "droplets", "type": "generic", "label": "encapsulate"}]}},
+    {"id": "p3", "title": "Library prep", "grid": [0, 2, 1, 1],
+     "content": {"archetype": "workflow",
+       "entities": [
+         {"id": "cdna", "type": "sample", "label": "Barcoded cDNA"},
+         {"id": "lib", "type": "sample", "label": "Sequencing library"}],
+       "relations": [{"source": "cdna", "target": "lib", "type": "generic", "label": "amplify"}]}},
+    {"id": "p4", "title": "Analysis", "grid": [0, 3, 1, 1],
+     "content": {"archetype": "workflow",
+       "entities": [
+         {"id": "reads", "type": "sample", "label": "Sequencing reads"},
+         {"id": "clusters", "type": "equipment", "label": "Cell clusters (UMAP)"}],
+       "relations": [{"source": "reads", "target": "clusters", "type": "generic", "label": "cluster"}]}}
+  ]
+}

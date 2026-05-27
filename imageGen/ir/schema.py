@@ -8,10 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class EntityType(str, Enum):
     PROTEIN = "protein"
+    COMPLEX = "complex"
     LIGAND = "ligand"
     RECEPTOR = "receptor"
     KINASE = "kinase"
     GENE = "gene"
+    RNA = "rna"
     METABOLITE = "metabolite"
     CELL = "cell"
     ORGANELLE = "organelle"
@@ -148,6 +150,10 @@ class Figure(_IRBase):
     title: str | None = None
     caption: str | None = None
     style_preset: str = "cell_press"
+    # LT1: optional layout override. "circular" forces a ring layout for a
+    # compartment-free cyclic pathway; None lets the engine auto-detect (a pure
+    # single cycle rings automatically). Other values are ignored by the engine.
+    layout_hint: str | None = None
     entities: list[Entity] = Field(default_factory=list)
     compartments: list[Compartment] = Field(default_factory=list)
     relations: list[Relation] = Field(default_factory=list)

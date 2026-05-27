@@ -97,6 +97,14 @@ def _add_render_flags(parser: argparse.ArgumentParser) -> None:
         "single command render + verify without a second round-trip.",
     )
     parser.add_argument(
+        "--autocrop",
+        action="store_true",
+        help="Trim excess whitespace from the primary deliverable in place "
+        "(render_figure(autocrop=True)), so the shipped figure has no dead "
+        "margin. Unlike --crop this rewrites the main output rather than "
+        "writing a sibling file.",
+    )
+    parser.add_argument(
         "--crop",
         action="store_true",
         help="Write a sibling *_cropped figure reframed onto its content "
@@ -118,6 +126,14 @@ def _add_render_flags(parser: argparse.ArgumentParser) -> None:
         metavar="FRAC",
         help="Margin around content when --crop is set, as a fraction of "
         "content size (default 0.15 = comfortable).",
+    )
+    parser.add_argument(
+        "--layout",
+        choices=["circular"],
+        default=None,
+        help="Override the layout for a compartment-free pathway. 'circular' "
+        "forces a ring layout (sets figure.layout_hint). Pure single-cycle "
+        "pathways ring automatically without this flag.",
     )
 
 
@@ -252,6 +268,10 @@ def main(argv: list[str] | None = None) -> int:
         args = _build_parser().parse_args(raw)
         ir = Figure.model_validate_json(Path(args.ir_path).read_text())
 
+    # LT1: --layout circular forces ring layout via the IR hint.
+    if getattr(args, "layout", None) == "circular":
+        ir = ir.model_copy(update={"layout_hint": "circular"})
+
     smiles_map = None
     if args.smiles_map is not None:
         smiles_map = json.loads(Path(args.smiles_map).read_text())
@@ -277,6 +297,7 @@ def main(argv: list[str] | None = None) -> int:
         display_dpi=args.display_dpi,
         canvas=canvas,
         strict_labels=args.strict_labels,
+        autocrop=args.autocrop,
     )
     print(out)
 

@@ -1,0 +1,21 @@
+{
+  "archetype": "pathway",
+  "title": "MAPK cascade with labeled phosphorylation + translocation",
+  "compartments": [
+    {"id": "cyto", "type": "cytoplasm", "label": "Cytoplasm"},
+    {"id": "nuc", "type": "nucleus", "label": "Nucleus"}
+  ],
+  "entities": [
+    {"id": "ras", "type": "protein", "label": "Ras", "location": "cyto"},
+    {"id": "raf", "type": "kinase", "label": "Raf", "location": "cyto"},
+    {"id": "mek", "type": "kinase", "label": "MEK", "location": "cyto"},
+    {"id": "erk", "type": "kinase", "label": "ERK", "location": "cyto"},
+    {"id": "target", "type": "gene", "label": "Target gene", "location": "nuc"}
+  ],
+  "relations": [
+    {"source": "ras", "target": "raf", "type": "activates"},
+    {"source": "raf", "target": "mek", "type": "phosphorylates", "label": "phosphorylate"},
+    {"source": "mek", "target": "erk", "type": "phosphorylates", "label": "phosphorylate"},
+    {"source": "erk", "target": "target", "type": "translocates", "label": "translocate"}
+  ]
+}

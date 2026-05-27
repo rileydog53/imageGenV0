@@ -22,10 +22,12 @@ from imageGen.primitives import nucleic_acids, proteins
 # collision-aware label anchoring.
 ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
     EntityType.PROTEIN:    (60.0, 30.0),
+    EntityType.COMPLEX:    (72.0, 38.0),
     EntityType.LIGAND:     (60.0, 30.0),
     EntityType.RECEPTOR:   (28.0, 60.0),
     EntityType.KINASE:     (70.0, 32.0),
     EntityType.GENE:       (80.0, 40.0),
+    EntityType.RNA:        (80.0, 40.0),
     EntityType.METABOLITE: (60.0, 30.0),
     EntityType.CELL:       (60.0, 30.0),
     EntityType.ORGANELLE:  (60.0, 30.0),
@@ -39,10 +41,12 @@ ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
 # when anchoring labels to entity LayoutEntries.
 ENTITY_TO_PRIMITIVE: dict[EntityType, Callable[..., svgwrite.container.Group]] = {
     EntityType.PROTEIN:    proteins.generic_protein,
+    EntityType.COMPLEX:    proteins.protein_complex,
     EntityType.LIGAND:     proteins.generic_protein,
     EntityType.RECEPTOR:   proteins.receptor,
     EntityType.KINASE:     proteins.kinase,
     EntityType.GENE:       nucleic_acids.gene_helix,
+    EntityType.RNA:        nucleic_acids.rna_helix,
     EntityType.METABOLITE: proteins.generic_protein,
     EntityType.CELL:       proteins.generic_protein,
     EntityType.ORGANELLE:  proteins.generic_protein,
@@ -63,11 +67,13 @@ ENTITY_TO_PRIMITIVE: dict[EntityType, Callable[..., svgwrite.container.Group]] =
 
 PRIMITIVE_REGISTRY: dict[str, Callable[..., svgwrite.container.Group]] = {
     "generic_protein":       proteins.generic_protein,
+    "protein_complex":       proteins.protein_complex,
     "kinase":                proteins.kinase,
     "receptor":              proteins.receptor,
     "gpcr":                  proteins.gpcr,
     "transcription_factor":  proteins.transcription_factor,
     "gene_helix":            nucleic_acids.gene_helix,
+    "rna_helix":             nucleic_acids.rna_helix,
 }
 
 # Canonical (w, h) for each registered primitive — used when a primitive

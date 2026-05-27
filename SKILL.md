@@ -269,8 +269,8 @@ never both.
 | `location` | string | no | a compartment `id` (must exist) |
 | `style` | object | no | per-entity style overrides |
 
-`type` ∈ `protein`, `ligand`, `receptor`, `kinase`, `gene`, `metabolite`,
-`cell`, `organelle`, `equipment`, `sample`, `generic`.
+`type` ∈ `protein`, `complex`, `ligand`, `receptor`, `kinase`, `gene`, `rna`,
+`metabolite`, `cell`, `organelle`, `equipment`, `sample`, `generic`.
 
 ### `Compartment`
 

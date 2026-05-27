@@ -59,11 +59,13 @@ _SHAPE_TAGS = ("rect", "polygon", "ellipse", "circle", "path", "polyline")
 # `EntityType → primitive` mapping; this owns `primitive → shape tag`.
 _PRIMITIVE_SHAPE = {
     proteins.generic_protein: "rect",
+    proteins.protein_complex: "rect",
     proteins.kinase: "polygon",
     proteins.receptor: "polygon",
     proteins.gpcr: "rect",
     proteins.transcription_factor: "rect",
     nucleic_acids.gene_helix: "polyline",
+    nucleic_acids.rna_helix: "polyline",
 }
 
 

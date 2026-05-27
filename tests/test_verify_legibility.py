@@ -118,6 +118,26 @@ def test_sparse_content_needs_crop(tmp_path):
     assert result.canvas_bbox == (0.0, 0.0, 1000.0, 1000.0)
 
 
+def test_viewbox_offset_is_measured_against_its_own_frame(tmp_path):
+    """LT5: a viewBox-cropped SVG is measured against the viewBox, not (0,0,w,h).
+
+    L22 autocrop trims by shifting the viewBox origin rather than translating
+    content. A figure whose content lives at y≈30 inside a viewBox starting at
+    y=27 fills its frame and must NOT report needs_crop.
+    """
+    path = tmp_path / "fig.svg"
+    path.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" '
+        'width="200" height="146" viewBox="0 27 200 146">'
+        '<rect x="10" y="37" width="180" height="126" />'
+        + _text(100, 100, "Tight")
+        + "</svg>"
+    )
+    result = legibility_check(path)
+    assert result.needs_crop is False
+    assert result.canvas_bbox == (0.0, 27.0, 200.0, 173.0)
+
+
 def test_dense_content_no_crop(tmp_path):
     """Content (a rect) filling the canvas leaves no croppable whitespace."""
     svg = _write_svg(
@@ -127,3 +147,39 @@ def test_dense_content_no_crop(tmp_path):
     result = legibility_check(svg)
     assert result.needs_crop is False
     assert result.content_bbox == (0.0, 0.0, 200.0, 200.0)
+
+
+# ---------------------------------------------------------------------------
+# LT3 — phosphorylation 'P' badge must not collide with the relation label
+# ---------------------------------------------------------------------------
+
+
+def test_phospho_badge_does_not_collide_with_relation_label(tmp_path):
+    """A labeled phosphorylation edge renders legibly (LT3 regression).
+
+    Before LT3 the 'P' badge text and the relation label both anchored at the
+    arrow midpoint and overlapped, failing legibility_check. Feeding the badge
+    bbox into the label engine's occupied set steers the label clear.
+    """
+    svg = tmp_path / "mapk_phospho.svg"
+    _render("mapk_phospho_label.json", svg)
+    result = legibility_check(svg)  # must not raise on the P/label overlap
+    assert isinstance(result, LegibilityResult)
+
+
+# ---------------------------------------------------------------------------
+# LT4 — panel labels must stay inside their cell, not spill into neighbors
+# ---------------------------------------------------------------------------
+
+
+def test_panel_labels_do_not_spill_into_neighbor(tmp_path):
+    """A narrow-panel workflow with wide labels renders legibly (LT4 regression).
+
+    Before LT4 a wide entity label in one panel (e.g. 'Enzymatic digestion')
+    spilled past its cell edge and overlapped the adjacent panel's label. The
+    label-aware x-clamp keeps each entity's label inside its own cell.
+    """
+    svg = tmp_path / "scrnaseq.svg"
+    _render("scrnaseq_workflow.json", svg)
+    result = legibility_check(svg)  # must not raise on cross-panel overlap
+    assert isinstance(result, LegibilityResult)
