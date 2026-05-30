@@ -77,13 +77,19 @@ def test_linear_chain_does_not_ring():
     assert _ring_order(_chain_figure(5)) is None
 
 
-def test_layout_hint_forces_ring_on_noncycle():
-    # A linear chain isn't a cycle, but the hint forces the ring.
-    assert _ring_order(_chain_figure(4, hint="circular")) is not None
+def test_layout_hint_requires_cycle_subgraph():
+    # layout_hint="circular" still requires a valid cycle after stripping dandling
+    # entry nodes. A pure linear chain has no cycle subgraph → must return None.
+    assert _ring_order(_chain_figure(4, hint="circular")) is None
+
+
+def test_layout_hint_forces_ring_on_cycle_with_entry():
+    # layout_hint="circular" on a cycle + one dangling entry node → ring mode.
+    assert _ring_order(_cycle_with_entry(4, 1)) is not None
 
 
 def test_ring_order_follows_cycle_adjacency():
-    order = _ring_order(_cycle_figure(5))
+    order, _dangling = _ring_order(_cycle_figure(5))
     # Consecutive ring slots must be adjacent in the cycle e0→e1→…→e4→e0.
     idx = {n: i for i, n in enumerate(order)}
     for i in range(5):
@@ -162,3 +168,88 @@ def test_linear_fixture_layout_unchanged_by_lt1():
     # A real-compartment pathway must not be touched by ring detection.
     fig = load_fixture("mapk_cascade.json")
     assert _ring_order(fig) is None
+
+
+# --- dangling entry nodes (LT1 extension) -----------------------------------
+
+def _cycle_with_entry(n_cycle: int, n_entry: int, *, hint: str = "circular") -> Figure:
+    """n_cycle-node pure cycle plus n_entry dangling entry nodes feeding node 0."""
+    ents = [
+        Entity(id=f"e{i}", type=EntityType.METABOLITE, label=f"E{i}")
+        for i in range(n_cycle)
+    ]
+    ents += [
+        Entity(id=f"d{i}", type=EntityType.LIGAND, label=f"D{i}")
+        for i in range(n_entry)
+    ]
+    rels = [
+        Relation(source=f"e{i}", target=f"e{(i + 1) % n_cycle}", type=RelationType.GENERIC)
+        for i in range(n_cycle)
+    ]
+    rels += [
+        Relation(source=f"d{i}", target="e0", type=RelationType.GENERIC)
+        for i in range(n_entry)
+    ]
+    return Figure(archetype=Archetype.PATHWAY, entities=ents, relations=rels, layout_hint=hint)
+
+
+def test_ring_forced_with_single_dangling_entry():
+    """layout_hint=circular + one dangling entry: cycle on ring, dangling off-ring."""
+    fig = _cycle_with_entry(4, 1)
+    result = _ring_order(fig)
+    assert result is not None
+    order, dangling = result
+    assert set(order) == {"e0", "e1", "e2", "e3"}
+    assert dangling == ["d0"]
+
+
+def test_ring_no_autodetect_with_dangling_entry():
+    """Without layout_hint, a cycle+dangling graph must NOT auto-detect as ring."""
+    fig = _cycle_with_entry(4, 1, hint=None)
+    assert _ring_order(fig) is None
+
+
+def test_ring_forced_with_dangling_chain():
+    """layout_hint=circular + chain of entry nodes: only cycle nodes on ring."""
+    ents = [Entity(id=f"e{i}", type=EntityType.METABOLITE, label=f"E{i}") for i in range(4)]
+    ents += [Entity(id="d0", type=EntityType.LIGAND, label="D0"),
+             Entity(id="d1", type=EntityType.LIGAND, label="D1")]
+    rels = [
+        Relation(source=f"e{i}", target=f"e{(i + 1) % 4}", type=RelationType.GENERIC)
+        for i in range(4)
+    ]
+    rels += [
+        Relation(source="d0", target="d1", type=RelationType.GENERIC),
+        Relation(source="d1", target="e0", type=RelationType.GENERIC),
+    ]
+    fig = Figure(archetype=Archetype.PATHWAY, entities=ents, relations=rels, layout_hint="circular")
+    result = _ring_order(fig)
+    assert result is not None
+    order, dangling = result
+    assert set(order) == {"e0", "e1", "e2", "e3"}
+    assert set(dangling) == {"d0", "d1"}
+
+
+def test_tca_8node_with_acetylcoa():
+    """Krebs fixture + Acetyl-CoA: layout_hint=circular puts AcCoA off-ring."""
+    fig = load_fixture("krebs_cycle.json")
+    fig.entities.append(Entity(id="acoa", type=EntityType.LIGAND, label="Acetyl-CoA"))
+    fig.relations.append(Relation(source="acoa", target="cit", type=RelationType.GENERIC))
+    fig.layout_hint = "circular"
+
+    result = _ring_order(fig)
+    assert result is not None, "ring should activate with layout_hint=circular"
+    order, dangling = result
+    assert len(order) == 8
+    assert "acoa" not in order
+    assert "acoa" in dangling
+
+    # Acetyl-CoA must sit outside the ring (farther from center than ring nodes)
+    entries = layout_pathway(fig)
+    pos = _entity_pos(entries)
+    cx = sum(x for x, y in pos.values()) / len(pos)
+    cy = sum(y for x, y in pos.values()) / len(pos)
+    ring_radii = [math.hypot(pos[n][0] - cx, pos[n][1] - cy) for n in order if n in pos]
+    avg_ring_r = sum(ring_radii) / len(ring_radii)
+    acoa_r = math.hypot(pos["acoa"][0] - cx, pos["acoa"][1] - cy)
+    assert acoa_r > avg_ring_r * 1.1, "Acetyl-CoA should sit outside the ring"

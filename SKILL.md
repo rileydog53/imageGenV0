@@ -122,13 +122,16 @@ text in your response:
 ```
 Archetype: <selected archetype> — because <one-sentence reason>
 Fixture(s) read: <filename(s)>, confirmed structure matches plan
-Entity count per panel: <N> (must be ≤5; if >5, list collapsed nodes)
+Entity count per panel: <N> (ring layouts: up to ~12 is fine; DAG/spring: aim ≤7, collapse only if verifier warns)
 Label safety: all entity and relation labels are ASCII-only — confirmed
 ```
 
-Do not proceed to Step 3 until this block is written. If any panel has more
-than 5 entities, collapse intermediate nodes first (e.g. merge "Gs protein" +
-"Adenylyl Cyclase" into a single "Gs/AC" node) and update the count.
+Do not proceed to Step 3 until this block is written. For **ring layouts**
+(cycles, metabolic loops) do NOT collapse biochemically distinct nodes — the
+ring engine handles up to ~12 nodes legibly. For spring/DAG layouts, aim for
+≤7 entities per panel and collapse only when the layout engine actually warns
+about label overlap. Never merge distinct metabolites or proteins unless the
+user explicitly asks for a simplified schematic.
 
 ### Step 3 — smiles_map (reaction_scheme only)
 
@@ -402,11 +405,15 @@ By default labels never crash the render — an unplaceable label shrinks,
 nudges, or lands with a tolerated overlap (you'll see a `UserWarning`). If the
 result looks cluttered, improve it rather than accepting it:
 
-1. Count entities per panel. If any panel has >5 entities, collapse nodes
-   (e.g. merge "Gs protein" + "Adenylyl Cyclase" into "Gs/AC") until ≤5.
-2. Count labelled relations per panel. Remove labels until ≤3 remain; move
+1. **Ring layouts:** do not collapse nodes. The ring engine is designed for
+   cycles of up to ~12 nodes. If labels overlap, shorten the node labels
+   (e.g. "a-Ketoglutarate" → "a-KG") rather than merging nodes.
+2. **Spring/DAG layouts:** if any panel has >7 entities *and* the verifier or
+   render warns about label overlap, collapse closely related nodes (e.g.
+   merge "Gs protein" + "Adenylyl Cyclase" into "Gs/AC").
+3. Count labelled relations per panel. Remove labels until ≤3 remain; move
    removed labels into the caption.
-3. Still cluttered? Render `--no-labels` and describe the relations in the
+4. Still cluttered? Render `--no-labels` and describe the relations in the
    caption.
 
 (`--strict-labels` turns an unplaceable label back into a hard

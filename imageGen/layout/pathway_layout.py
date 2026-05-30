@@ -231,14 +231,39 @@ def _is_pure_single_cycle(dg: nx.DiGraph) -> bool:
     return nx.is_strongly_connected(dg)
 
 
-def _ring_order(figure: Figure) -> list[str] | None:
-    """Return the node order around the ring, or None if not a ring figure.
+def _split_dangling(dg: nx.DiGraph) -> tuple[nx.DiGraph, list[str]]:
+    """Partition `dg` into a cycle subgraph and dangling entry nodes.
 
-    Rings only apply to compartment-free pathways. A figure rings when either
-    its `layout_hint == "circular"` (forced) or its relation graph is a pure
-    single cycle (auto-detected). The order is the topological order of the
-    feedback-arc DAG (the cycle's back-edge is stripped first), so adjacent
-    ring positions are adjacent in the cycle. Returns None for <3 nodes.
+    Dangling nodes are those with in-degree 0 (pure entry points — they feed
+    into the cycle but receive no edges from it). Removal is iterated until
+    stable, so chains of entry nodes (A→B→Citrate where A and B are both
+    external) are fully stripped. Returns (cycle_subgraph, dangling_list).
+    The cycle_subgraph is a copy; `dg` is not mutated.
+    """
+    working = dg.copy()
+    dangling: list[str] = []
+    while True:
+        leaves = [v for v in working if working.in_degree(v) == 0]
+        if not leaves:
+            break
+        dangling.extend(leaves)
+        working.remove_nodes_from(leaves)
+    return working, dangling
+
+
+def _ring_order(figure: Figure) -> tuple[list[str], list[str]] | None:
+    """Return (ring_order, dangling_nodes) if this figure should use ring layout.
+
+    Ring layout applies to compartment-free pathways when either:
+    - The full relation graph is a pure single cycle (auto-detected). All nodes
+      must have in/out-degree exactly 1 — no dandling entry nodes. This is the
+      strict unambiguous case (e.g. an 8-node Krebs cycle with no inputs shown).
+    - `layout_hint == "circular"` forces ring mode. In this case dangling entry
+      nodes (in-degree 0) are stripped from the cycle graph and placed outside
+      the ring near their ring target. Use this mode when you need to show
+      metabolic inputs (e.g. Acetyl-CoA feeding into Citrate).
+
+    Returns None if ring layout does not apply or the cycle has <3 nodes.
     """
     if figure.compartments:  # real compartments → keep band layout
         if figure.layout_hint == "circular":
@@ -257,18 +282,28 @@ def _ring_order(figure: Figure) -> list[str] | None:
         DG.add_edge(r.source, r.target)
 
     forced = figure.layout_hint == "circular"
-    if not (forced or _is_pure_single_cycle(DG)):
-        return None
-    if DG.number_of_nodes() < 3:
-        return None
 
-    dag = _feedback_arc_dag(DG)
+    if forced:
+        # Strip dangling entry nodes so the cycle subgraph can be detected.
+        cycle_dg, dangling = _split_dangling(DG)
+        if not _is_pure_single_cycle(cycle_dg):
+            return None
+        if cycle_dg.number_of_nodes() < 3:
+            return None
+        dag = _feedback_arc_dag(cycle_dg)
+    else:
+        # Strict auto-detect: all nodes must be on the cycle.
+        if not _is_pure_single_cycle(DG):
+            return None
+        if DG.number_of_nodes() < 3:
+            return None
+        dangling = []
+        dag = _feedback_arc_dag(DG)
+
     ranks = rank_nodes(dag)
     order_idx = order_within_ranks(dag, ranks)
-    # Flatten ranks → a single ring order; within a rank, use the
-    # crossing-reduced order, then rank ascending.
     order = sorted(ranks, key=lambda n: (ranks[n], order_idx.get(n, 0), n))
-    return order
+    return order, dangling
 
 
 def _ring_geometry(
@@ -301,25 +336,56 @@ def _ring_geometry(
 
 def _ring_positions(
     order: list[str],
+    dangling: list[str],
     entity_by_id: dict,
     entity_sizes: dict,
     params: dict,
     origin: tuple[float, float],
+    relations: list,
 ) -> tuple[dict[str, tuple[float, float]], tuple[float, float], tuple[float, float]]:
-    """Place `order` nodes evenly on a ring. Returns (positions, canvas, center).
+    """Place ring nodes evenly on a circle; place dangling entry nodes outside.
 
-    Node i sits at angle `-pi/2 + 2*pi*i/n` (first node at top, going
-    clockwise), so the cycle reads top→right→bottom→left.
+    Ring nodes sit at angle `-pi/2 + 2*pi*i/n` (first node at top, clockwise).
+    Dangling nodes (in-degree 0) are positioned radially outside the ring,
+    offset from their first ring target at 1.6× the ring radius from center.
+    Multiple dangling nodes targeting the same ring node are fanned ±30°.
+    Returns (positions, canvas, center).
     """
     n = len(order)
-    max_w = max(entity_sizes[entity_by_id[i].type][0] for i in order)
-    max_h = max(entity_sizes[entity_by_id[i].type][1] for i in order)
+    all_nodes = list(order) + list(dangling)
+    max_w = max(entity_sizes[entity_by_id[i].type][0] for i in all_nodes)
+    max_h = max(entity_sizes[entity_by_id[i].type][1] for i in all_nodes)
     canvas, center, radius = _ring_geometry(n, max_w, max_h, params, origin)
     cx, cy = center
+
+    # Place ring nodes on circle
+    ring_theta: dict[str, float] = {}
     positions: dict[str, tuple[float, float]] = {}
     for i, node in enumerate(order):
         theta = -math.pi / 2.0 + 2.0 * math.pi * i / n
+        ring_theta[node] = theta
         positions[node] = (cx + radius * math.cos(theta), cy + radius * math.sin(theta))
+
+    if dangling:
+        # Build map: ring_target → list of dangling nodes pointing to it
+        target_map: dict[str, list[str]] = {}
+        for d in dangling:
+            targets = [r.target for r in relations if r.source == d and r.target in positions]
+            ring_target = targets[0] if targets else order[0]
+            target_map.setdefault(ring_target, []).append(d)
+
+        outer_radius = radius * 1.6
+        fan_step = math.radians(30)
+        for ring_target, dlist in target_map.items():
+            base_theta = ring_theta.get(ring_target, -math.pi / 2.0)
+            offsets = [0.0] if len(dlist) == 1 else [
+                fan_step * (i - (len(dlist) - 1) / 2.0) for i in range(len(dlist))
+            ]
+            for d, offset in zip(dlist, offsets):
+                theta = base_theta + offset
+                positions[d] = (cx + outer_radius * math.cos(theta),
+                                cy + outer_radius * math.sin(theta))
+
     return positions, canvas, center
 
 
@@ -387,10 +453,11 @@ def compute_pathway_canvas(
     edge_margin = float(params["pathway_edge_margin"])
 
     # LT1: ring layout → square canvas sized from the ring geometry.
-    ring_order = _ring_order(figure)
-    if ring_order is not None:
+    _ring_result = _ring_order(figure)
+    if _ring_result is not None:
+        _ring_nodes, _ring_dangling = _ring_result
         canvas, _center, _radius = _ring_geometry(
-            len(ring_order), max_entity_w, max_entity_h, params,
+            len(_ring_nodes), max_entity_w, max_entity_h, params,
             params["pathway_origin"],
         )
         return canvas
@@ -1294,12 +1361,15 @@ def layout_pathway(
     # LT1: ring layout for compartment-free cyclic pathways. Nodes are placed
     # on a circle and arrows drawn as straight chords between adjacent nodes,
     # so the cycle reads as a ring instead of a band with a long closing arch.
-    ring_order = _ring_order(figure)
-    ring_mode = ring_order is not None
+    _ring_result = _ring_order(figure)
+    ring_mode = _ring_result is not None
+    ring_order: list[str] = []
+    ring_dangling: list[str] = []
     if ring_mode:
+        ring_order, ring_dangling = _ring_result  # type: ignore[misc]
         positions, canvas, _ring_center = _ring_positions(
-            ring_order, entity_by_id, effective_bbox, params,
-            params["pathway_origin"],
+            ring_order, ring_dangling, entity_by_id, effective_bbox, params,
+            params["pathway_origin"], figure.relations,
         )
         bands = {}
 
