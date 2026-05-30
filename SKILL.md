@@ -27,9 +27,9 @@ hop. Use:
 - **`Write`/`Edit`** to create the spec or IR file.
 
 Paths: use the venv Python `~/Desktop/.venv/bin/python` (the `imageGen`
-package is installed there). The repo root is `~/Desktop/imageGen-v0.1/`;
+package is installed there). The repo root is `~/Desktop/imageGen-v2.1/`;
 fixtures cited as `tests/fixtures/<file>` live at
-`~/Desktop/imageGen-v0.1/tests/fixtures/<file>`. Write throwaway specs and
+`~/Desktop/imageGen-v2.1/tests/fixtures/<file>`. Write throwaway specs and
 output to `~/Desktop/scratch/`. `~` works fine in the Bash tool.
 
 > **If you are a chat assistant *without* a shell** (e.g. claude.ai with no
@@ -112,7 +112,7 @@ Archetype → required fixture file:
 | multi-panel figure | `three_panel_workflow.json` **AND** `graphical_abstract_mrna_vaccine.json` |
 
 Read it with the **`Read`** tool:
-`~/Desktop/imageGen-v0.1/tests/fixtures/<file>`.
+`~/Desktop/imageGen-v2.1/tests/fixtures/<file>`.
 
 ### Step 2 — Plan and output confirmation block
 
@@ -122,13 +122,16 @@ text in your response:
 ```
 Archetype: <selected archetype> — because <one-sentence reason>
 Fixture(s) read: <filename(s)>, confirmed structure matches plan
-Entity count per panel: <N> (must be ≤5; if >5, list collapsed nodes)
+Entity count per panel: <N> (ring layouts: up to ~12 is fine; DAG/spring: aim ≤7, collapse only if verifier warns)
 Label safety: all entity and relation labels are ASCII-only — confirmed
 ```
 
-Do not proceed to Step 3 until this block is written. If any panel has more
-than 5 entities, collapse intermediate nodes first (e.g. merge "Gs protein" +
-"Adenylyl Cyclase" into a single "Gs/AC" node) and update the count.
+Do not proceed to Step 3 until this block is written. For **ring layouts**
+(cycles, metabolic loops) do NOT collapse biochemically distinct nodes — the
+ring engine handles up to ~12 nodes legibly. For spring/DAG layouts, aim for
+≤7 entities per panel and collapse only when the layout engine actually warns
+about label overlap. Never merge distinct metabolites or proteins unless the
+user explicitly asks for a simplified schematic.
 
 ### Step 3 — smiles_map (reaction_scheme only)
 
@@ -171,9 +174,13 @@ three verifiers and prints a one-line report:
 
 ```bash
 ~/Desktop/.venv/bin/python -m imageGen render-spec ~/Desktop/scratch/figure.yaml \
-    -o ~/Desktop/scratch/figure.png --verify \
+    -o ~/Desktop/scratch/figure.png --verify --autocrop \
     [--smiles-map ~/Desktop/scratch/smiles.json]   # reaction_scheme only
 ```
+
+`--autocrop` trims dead margin from the shipped figure **in place**, so it ships
+tight by default — unlike the older `--crop` (Step 7), which writes a separate
+`*_cropped` sibling and leaves the original untouched.
 
 - A **`pydantic.ValidationError`** means the spec is malformed — read the
   message, fix only what it names (common: a relation referencing an unknown
@@ -194,11 +201,11 @@ inline, then add a one- or two-sentence caption describing what it depicts.
 Do **not** use `open`, `osascript`, Preview, or any external viewer. If any
 element is illustrative/schematic rather than measured data, say so.
 
-### Step 7 — Offer to crop (only if there's excess whitespace)
+### Step 7 — Crop fallback (rarely needed)
 
-The default canvas can leave a wide margin of empty space around a small
-figure. If the Step 5 `VERIFY:` line reported **`needs_crop=True`** (or the
-displayed image obviously floats in whitespace), present the full figure
+With `--autocrop` in Step 5 the shipped figure is already trimmed in place, so
+`VERIFY:` should report **`needs_crop=False`**. Only if you skipped `--autocrop`
+or the displayed image still floats in whitespace: present the full figure
 first, then **ask the user**: *"Want me to crop in tighter on the figure?"*
 Do not crop unprompted.
 
@@ -269,8 +276,26 @@ never both.
 | `location` | string | no | a compartment `id` (must exist) |
 | `style` | object | no | per-entity style overrides |
 
-`type` ∈ `protein`, `ligand`, `receptor`, `kinase`, `gene`, `metabolite`,
-`cell`, `organelle`, `equipment`, `sample`, `generic`.
+`type` ∈ `protein`, `complex`, `ligand`, `receptor`, `kinase`, `gene`, `rna`,
+`metabolite`, `cell`, `organelle`, `equipment`, `sample`, `generic`.
+
+#### Glyph overrides — `style.primitive`
+
+The `type` above picks a default shape. To render an entity with a more
+specific glyph, set `style.primitive` to one of the names below — the entity
+keeps its `type` (use the closest one) but draws as the chosen glyph. Unknown
+names warn and fall back to the type default.
+
+| Theme | `style.primitive` values |
+|---|---|
+| Proteins / enzymes | `kinase`, `phosphatase`, `gpcr`, `receptor`, `transcription_factor`, `protein_complex`, `antibody` |
+| Membrane transport | `ion_channel`, `transporter`, `pump` |
+| Subcellular | `ribosome`, `vesicle` |
+| Nucleic acids | `gene_helix` (DNA), `rna_helix` (RNA), `mrna_helix` (5' cap + polyA), `primer_helix` (3' arrow) |
+| Lab equipment | `flask`, `centrifuge`, `flow_cytometer`, `sequencer`, `petri_dish`, `syringe` |
+
+Example: `{"id": "igg", "type": "protein", "label": "IgG", "style":
+{"primitive": "antibody"}}`.
 
 ### `Compartment`
 
@@ -288,8 +313,11 @@ never both.
 | `conditions` | `ReactionConditions` or object | no | reaction context |
 
 `type` ∈ `activates`, `inhibits`, `binds`, `translocates`, `phosphorylates`,
-`transcribes`, `generic`. Conventions: `activates` → solid arrow,
-`inhibits` → T-bar.
+`transcribes`, `catalyzes`, `cleaves`, `transports`, `recruits`, `generic`.
+Conventions: `activates` → solid filled arrow; `inhibits` → T-bar;
+`binds` → double-headed; `translocates` → dashed open head;
+`catalyzes` → open-circle terminus; `cleaves` → arrow with a cut-mark;
+`transports` → hollow block arrow; `recruits` → dashed line ending in a dot.
 
 ### `ReactionConditions` (for `relation.conditions`)
 
@@ -315,6 +343,31 @@ must not overlap).
 - Every `relation.source`/`target` references an existing entity.
 - Every `entity.location` references an existing compartment.
 - Leaf-XOR-panel (above). Panel grids must not overlap.
+
+---
+
+## Encoding pitfalls — avoid these
+
+Three mis-encodings silently degrade output. Check the IR against them before
+rendering.
+
+**1. Reactions: parallel edges, not a chain.** A single-step multi-product
+reaction `A + B → C + D` is **parallel** reactant→product edges — `A→C` and
+`B→D` (or `A→C`, `B→C` if both feed one product). Do **not** write a chain like
+`A→C, B→C, C→D`: that makes `C` both a target *and* a source, so the engine
+reads it as a false intermediate (a multi-step reaction) and routes it
+differently. Use a chain `A→B→C` only when `B` is a **genuine** isolated
+intermediate in a multi-step sequence.
+
+**2. Decorations are glyphs on a relation, not entity nodes.** A phosphosite,
+N-/C-terminus, ubiquitin tag, methyl mark, etc. is **not** its own entity. Model
+the modification as the relation between modifier and substrate (e.g. a kinase
+`phosphorylates` its target — the "P" badge is drawn automatically). A separate
+`"P"`/`"phosphosite"` entity node clutters the graph and breaks layout.
+
+**3. Mechanisms use `mechanism_cartoon`, not `reaction_scheme`.** Arrow-pushing
+/ intermediates / transition states → `mechanism_cartoon`. Net transformations
+(reactants → products) → `reaction_scheme`.
 
 ---
 
@@ -352,11 +405,15 @@ By default labels never crash the render — an unplaceable label shrinks,
 nudges, or lands with a tolerated overlap (you'll see a `UserWarning`). If the
 result looks cluttered, improve it rather than accepting it:
 
-1. Count entities per panel. If any panel has >5 entities, collapse nodes
-   (e.g. merge "Gs protein" + "Adenylyl Cyclase" into "Gs/AC") until ≤5.
-2. Count labelled relations per panel. Remove labels until ≤3 remain; move
+1. **Ring layouts:** do not collapse nodes. The ring engine is designed for
+   cycles of up to ~12 nodes. If labels overlap, shorten the node labels
+   (e.g. "a-Ketoglutarate" → "a-KG") rather than merging nodes.
+2. **Spring/DAG layouts:** if any panel has >7 entities *and* the verifier or
+   render warns about label overlap, collapse closely related nodes (e.g.
+   merge "Gs protein" + "Adenylyl Cyclase" into "Gs/AC").
+3. Count labelled relations per panel. Remove labels until ≤3 remain; move
    removed labels into the caption.
-3. Still cluttered? Render `--no-labels` and describe the relations in the
+4. Still cluttered? Render `--no-labels` and describe the relations in the
    caption.
 
 (`--strict-labels` turns an unplaceable label back into a hard
@@ -395,7 +452,8 @@ Do not retry the same command unchanged. Check:
   `--style {cell_press,nature,acs}`, `--format {svg,png,pdf}` (else inferred
   from suffix), `--dpi N` (default 300), `--smiles-map FILE.json`,
   `--no-labels`, `--strict-labels`, `--canvas WxH`, `--verify`,
-  `--crop` (+ `--crop-keep-aspect`, `--crop-margin FRAC`).
+  `--autocrop` (trim the shipped figure in place — preferred),
+  `--crop` (+ `--crop-keep-aspect`, `--crop-margin FRAC`; writes a sibling).
 - **Builder API** (`imageGen.ir.builder.build`): the same tuple-friendly
   shorthand the spec uses, for calling from Python.
 - **Example IRs**: every archetype has a worked example in
@@ -410,7 +468,7 @@ The fixture is the ground truth for IR structure — do not write JSON from
 memory.
 
 Worked examples — each `tests/fixtures/<file>` is a complete, validated IR.
-**Read** them at `~/Desktop/imageGen-v0.1/tests/fixtures/<file>`.
+**Read** them at `~/Desktop/imageGen-v2.1/tests/fixtures/<file>`.
 
 1. **"Show the MAPK kinase cascade."** → `pathway`. Entities Ras (protein),
    Raf/MEK/ERK (kinases); relations `activates` then `phosphorylates`.

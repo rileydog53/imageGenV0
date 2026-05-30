@@ -227,9 +227,17 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     bands and panel chrome span the full canvas / cell and are treated
     as decorative backgrounds (see module docstring). Arrows, labels,
     and any other unknown primitives return None.
+
+    Exception (LT3): a phosphorylation arrow carries a 'P' badge whose text
+    the legibility audit treats as a label; its footprint is reserved here so
+    relation labels anchored at the same shaft midpoint avoid it.
     """
     if entry.primitive not in _ENTITY_PRIMITIVES:
-        return None
+        # Lazy import breaks the pathway_layout ↔ label_placement cycle.
+        from imageGen.layout.pathway_layout import (  # noqa: PLC0415
+            phospho_badge_occupied_bbox,
+        )
+        return phospho_badge_occupied_bbox(entry)
     # entity-primitive args: (label, (cx, cy), ...) per pathway_layout
     label, center = entry.args[:2]
     cx, cy = center

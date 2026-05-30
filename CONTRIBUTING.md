@@ -9,11 +9,11 @@ for anyone extending the project. For *using* imageGen, see
 
 Before writing code, read in order:
 
-1. **[ROADMAP.md](ROADMAP.md)** — phase status and key files.
-2. **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions
+1. **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions
    (D1–D4: IR-id tagging, watermarking, label auto-invoke, `smiles_map`).
-3. **[BACKLOG.md](BACKLOG.md)** — everything deliberately deferred; pick up
-   v2 work from here.
+2. **[BACKLOG.md](BACKLOG.md)** — open, in-scope defects.
+3. **[V3_FEATURES.md](V3_FEATURES.md)** — larger features parked for a
+   possible v3.
 4. **The pattern file for the area you're touching** — e.g. `primitives/proteins.py`
    for a primitive, `layout/reaction_layout.py` for a layout engine. Copy its style.
 
@@ -25,7 +25,7 @@ Before writing code, read in order:
 4. **Conventions over creativity.** Copy how Nature/Cell draws it.
 5. **Don't change `ir/schema.py` without explicit approval.** It is
    load-bearing.
-6. **All project files live in `~/Desktop/imageGen-v0.1/`.** Throwaway
+6. **All project files live in `~/Desktop/imageGen-v2.1/`.** Throwaway
    scripts go in `~/Desktop/scratch/`.
 7. **No fake data without watermarks.** Chart-of-real-measurements look →
    automatic "Illustrative" caption. No override flag.
@@ -50,5 +50,6 @@ Before writing code, read in order:
   project-local venv.
 - **Package:** importable as `imageGen` (`pip install -e .` done); CLI is
   `python -m imageGen`.
-- **Repo:** `~/Desktop/imageGen-v0.1/`, remote
-  `https://github.com/rileydog53/imageGenV0` (not yet renamed).
+- **Repo:** `~/Desktop/imageGen-v2.1/` (directory name retained), remote
+  `https://github.com/rileydog53/imageGenVx` (renamed from `imageGenV0` so the
+  version number isn't tied to the repo name).

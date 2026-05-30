@@ -153,6 +153,7 @@ def build(
     style: str | None = None,
     title: str | None = None,
     caption: str | None = None,
+    layout_hint: str | None = None,
 ) -> Figure:
     """Build and validate a `Figure` from a flat, tuple-friendly spec.
 
@@ -188,6 +189,8 @@ def build(
         data["caption"] = caption
     if style is not None:
         data["style_preset"] = style
+    if layout_hint is not None:
+        data["layout_hint"] = layout_hint
     if entities:
         data["entities"] = [_normalize_entity(e) for e in entities]
     if compartments:

@@ -101,6 +101,25 @@ def _f(value: str | None, default: float = 0.0) -> float:
     return float(m.group()) if m else default
 
 
+def _canvas_box(root: ET.Element) -> Bbox:
+    """Visible frame of the SVG as ``(x0, y0, x1, y1)``.
+
+    Prefers ``viewBox`` (min-x, min-y, w, h) when present so a cropped figure
+    is measured against its real frame. L22 autocrop trims by shifting the
+    viewBox origin (not by translating content), so without this the crop
+    signal would compare absolute content coords against ``(0, 0, w, h)`` and
+    spuriously report dead margin on an already-tight figure. Falls back to
+    ``width``/``height`` when there is no viewBox (the default render frame).
+    """
+    vb = root.get("viewBox")
+    if vb:
+        nums = [float(n) for n in _NUMBER.findall(vb)]
+        if len(nums) == 4:
+            minx, miny, w, h = nums
+            return (minx, miny, minx + w, miny + h)
+    return (0.0, 0.0, _f(root.get("width")), _f(root.get("height")))
+
+
 def _parse_translate(transform: str | None) -> tuple[float, float]:
     """Extract ``(tx, ty)`` of a ``translate(...)``; ``(0, 0)`` otherwise."""
     if not transform:
@@ -239,8 +258,9 @@ def content_bounds(svg_path: str | Path) -> tuple[Bbox, Bbox]:
 
     ``content_bbox`` is the union of every drawable element's box **excluding
     decorative compartment bands** (``data-role="band"``). ``canvas_bbox`` is
-    ``(0, 0, width, height)``. When the figure has no drawable content (only
-    chrome), ``content_bbox`` falls back to ``canvas_bbox``.
+    the visible frame: the ``viewBox`` when present, else ``(0, 0, width,
+    height)``. When the figure has no drawable content (only chrome),
+    ``content_bbox`` falls back to ``canvas_bbox``.
 
     This is the shared primitive behind both the legibility crop signal and
     the renderer's ``--crop`` feature, so the two always agree on where the
@@ -250,7 +270,7 @@ def content_bounds(svg_path: str | Path) -> tuple[Bbox, Bbox]:
     labels: list[tuple[str, float, Bbox, bool]] = []
     boxes: list[Bbox] = []
     _walk(root, 0.0, 0.0, labels, boxes)
-    canvas = (0.0, 0.0, _f(root.get("width")), _f(root.get("height")))
+    canvas = _canvas_box(root)
     content = _union(boxes) if boxes else canvas
     return content, canvas
 
@@ -319,7 +339,7 @@ def legibility_check(
                     f"{labels[j][0]!r} {labels[j][2]} overlap",
                 )
 
-    canvas = (0.0, 0.0, _f(root.get("width")), _f(root.get("height")))
+    canvas = _canvas_box(root)
     content = _union(boxes) if boxes else canvas
     return LegibilityResult(
         needs_crop=_needs_crop(content, canvas, crop_whitespace_fraction),

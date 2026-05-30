@@ -63,6 +63,13 @@ DEFAULT_STYLE: dict[str, object] = {
     "dna_rung_gc_fill":             "#1E88E5",   # G-C pair rung (with sequence)
     "dna_base_label_font_size":      8,           # pt, base-pair label on rungs
     "dna_base_label_show":           True,        # show "A-T" labels when sequence given
+    # DNA double-strand break (LT7): when a segment is drawn broken, both strands
+    # are interrupted by a clear axis gap of this width (px), with a short blunt
+    # cap line drawn across each cut end so the break reads as a DSB, not a join.
+    "dna_break_gap":                14.0,
+    "dna_break_cap_show":           True,
+    "dna_break_cap_stroke":         "#37474F",
+    "dna_break_cap_stroke_width":    1.5,
     # RNA
     "rna_stroke":                   "#E65100",   # convention: RNA orange
     "rna_stroke_width":              2.0,
@@ -236,12 +243,66 @@ def _rung_color(base: str, style: dict) -> str:
 # Public functions
 # ---------------------------------------------------------------------------
 
+def _broken_dna_segment(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    double_helix: bool,
+    supercoiled: bool,
+    sequence: str | None,
+    break_position: float,
+    s: dict,
+) -> svgwrite.container.Group:
+    """Render a DNA double-strand break: two flanking helices with an axis gap.
+
+    The gap is `dna_break_gap` px wide, centred at `break_position` along the
+    axis. Each flank is an ordinary (unbroken) helix, so the two cut ends leave
+    a visible coordinate gap. A short blunt cap line is drawn perpendicular to
+    the axis at each cut end so the break reads as a clean DSB.
+    """
+    length, tx, ty, px, py = _axis_frame(start, end)
+    gap = float(s["dna_break_gap"])
+    t = min(0.95, max(0.05, float(break_position)))
+    # Break centre on the axis.
+    bx = start[0] + t * (end[0] - start[0])
+    by = start[1] + t * (end[1] - start[1])
+    half = gap / 2.0
+    left_end = (bx - tx * half, by - ty * half)
+    right_start = (bx + tx * half, by + ty * half)
+
+    group = svgwrite.container.Group()
+    # Flanking helices (recurse with broken=False).
+    group.add(dna_segment(
+        start, left_end, double_helix=double_helix, supercoiled=supercoiled,
+        sequence=sequence, broken=False, style_dict=s,
+    ))
+    group.add(dna_segment(
+        right_start, end, double_helix=double_helix, supercoiled=supercoiled,
+        sequence=sequence, broken=False, style_dict=s,
+    ))
+
+    # Blunt caps across each cut end (perpendicular to the axis).
+    if s.get("dna_break_cap_show", True):
+        cap_h = float(s["dna_amplitude"]) + 4.0
+        cap_stroke = str(s["dna_break_cap_stroke"])
+        cap_sw = float(s["dna_break_cap_stroke_width"])
+        for ex, ey in (left_end, right_start):
+            group.add(svgwrite.shapes.Line(
+                start=(round(ex + px * cap_h, 2), round(ey + py * cap_h, 2)),
+                end=(round(ex - px * cap_h, 2), round(ey - py * cap_h, 2)),
+                stroke=cap_stroke,
+                stroke_width=cap_sw,
+            ))
+    return group
+
+
 def dna_segment(
     start: tuple[float, float],
     end: tuple[float, float],
     double_helix: bool = True,
     supercoiled: bool = False,
     sequence: str | None = None,
+    broken: bool = False,
+    break_position: float = 0.5,
     style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render a DNA segment as a sine-wave double (or single) helix.
@@ -263,12 +324,25 @@ def dna_segment(
         sequence: Optional sense-strand sequence (e.g. "ATGCATGC"). Each character is
                   assigned to one rung in order, cycling if shorter than the rung count.
                   Enables per-rung color coding and "A-T"/"G-C" labels centered on rungs.
+        broken: LT7 — when True, the helix is interrupted by a clean axis gap
+                (`dna_break_gap` px wide) centred at `break_position`, modelling a
+                double-strand break. Both strands stop at the gap and a short blunt
+                cap is drawn across each cut end. Implemented by rendering the two
+                flanking sub-segments as ordinary (unbroken) helices.
+        break_position: Fractional position of the break along the axis, in (0, 1).
+                        Only used when `broken=True`. Defaults to the midpoint.
         style_dict: Optional style-key overrides merged onto DEFAULT_STYLE.
 
     Returns:
         svgwrite.container.Group containing all strand and rung SVG elements.
     """
     s = {**DEFAULT_STYLE, **(style_dict or {})}
+
+    if broken:
+        return _broken_dna_segment(
+            start, end, double_helix, supercoiled, sequence, break_position, s,
+        )
+
     amplitude = float(s["dna_amplitude"])
     period = float(s["dna_period"])
     sample_rate = int(s["dna_sample_rate"])
@@ -432,6 +506,7 @@ def gene_helix(
     position: tuple[float, float],
     size: tuple[float, float] = (80.0, 40.0),
     color: str | None = None,  # accepted for API parity with generic_protein; unused
+    broken: bool = False,
     style_dict: dict | None = None,
 ) -> svgwrite.container.Group:
     """Render a GENE entity as a horizontal DNA double helix with a label below.
@@ -442,6 +517,10 @@ def gene_helix(
     shifted upward so the label fits below without clipping. Amplitude
     scales with bbox height so the helix stays within the entity's collision
     footprint at all sizes.
+
+    LT7: pass `broken=True` (or set `style_dict["dna_break"] = True`) to draw a
+    double-strand break — a clear gap interrupting both strands. The break
+    position can be set via `style_dict["dna_break_position"]` (default 0.5).
     """
     s = {**DEFAULT_STYLE, **(style_dict or {})}
     cx, cy = position
@@ -451,15 +530,188 @@ def gene_helix(
     amplitude = min(h * 0.30, float(s["dna_amplitude"]))
     helix_cy = cy - h * 0.18        # shift helix up to leave room for label below
 
+    broken = bool(broken or s.get("dna_break", False))
+    break_position = float(s.get("dna_break_position", 0.5))
+
     helix_grp = dna_segment(
         (cx - w / 2 + margin_x, helix_cy),
         (cx + w / 2 - margin_x, helix_cy),
         double_helix=True,
+        broken=broken,
+        break_position=break_position,
         style_dict={**s, "dna_amplitude": amplitude},
     )
 
     group = svgwrite.container.Group()
     group.add(helix_grp)
+
+    lbl = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.35, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    lbl["text-anchor"] = "middle"
+    lbl["dominant-baseline"] = "central"
+    group.add(lbl)
+    return group
+
+
+def rna_helix(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (80.0, 40.0),
+    color: str | None = None,  # accepted for API parity with generic_protein; unused
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """Render an RNA entity as a horizontal orange single-strand wave + label.
+
+    LT8: mirrors `gene_helix` but calls `rna_segment` so RNA species (mRNA,
+    sgRNA, miRNA) render as a single orange strand, visually distinct from the
+    blue DNA double helix. Same (label, position, size, color, style_dict)
+    calling convention as the other entity primitives for transparent
+    ENTITY_TO_PRIMITIVE dispatch.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    cx, cy = position
+    w, h = size
+
+    margin_x = max(4.0, w * 0.05)
+    amplitude = min(h * 0.30, float(s["rna_amplitude"]))
+    strand_cy = cy - h * 0.18        # shift strand up to leave room for label below
+
+    strand_grp = rna_segment(
+        (cx - w / 2 + margin_x, strand_cy),
+        (cx + w / 2 - margin_x, strand_cy),
+        single_strand=True,
+        style_dict={**s, "rna_amplitude": amplitude},
+    )
+
+    group = svgwrite.container.Group()
+    group.add(strand_grp)
+
+    lbl = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.35, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    lbl["text-anchor"] = "middle"
+    lbl["dominant-baseline"] = "central"
+    group.add(lbl)
+    return group
+
+
+def mrna_helix(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (90.0, 40.0),
+    color: str | None = None,  # accepted for API parity; unused
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """Render an mRNA entity as an orange single strand with a 5' cap and a
+    poly(A) tail — the features that distinguish a mature mRNA from a bare RNA.
+
+    Mirrors `rna_helix` (orange `rna_segment`, label below) and adds a filled
+    cap disc at the 5' (left) terminus and an "AAA" poly(A) tail at the 3'
+    (right) terminus. The strand polyline is added first so `convention_check`
+    keys the RNA shape correctly.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    cx, cy = position
+    w, h = size
+
+    margin_x = max(4.0, w * 0.05)
+    amplitude = min(h * 0.30, float(s["rna_amplitude"]))
+    strand_cy = cy - h * 0.18
+    cap_r = max(3.0, h * 0.10)
+    left = cx - w / 2 + margin_x + cap_r * 1.8
+    right = cx + w / 2 - margin_x - h * 0.30
+
+    strand_grp = rna_segment(
+        (left, strand_cy), (right, strand_cy),
+        single_strand=True,
+        style_dict={**s, "rna_amplitude": amplitude},
+    )
+    group = svgwrite.container.Group()
+    group.add(strand_grp)
+
+    cap = svgwrite.shapes.Circle(
+        center=(cx - w / 2 + margin_x + cap_r, strand_cy), r=cap_r,
+        fill=str(s["rna_stroke"]), stroke=str(s["rna_stroke"]),
+    )
+    group.add(cap)
+
+    tail = svgwrite.text.Text(
+        "AAA",
+        insert=(round(right + 3, 2), round(strand_cy, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]) * 0.8,
+        fill=str(s["rna_stroke"]),
+    )
+    tail["text-anchor"] = "start"
+    tail["dominant-baseline"] = "central"
+    tail["font-weight"] = "bold"
+    group.add(tail)
+
+    lbl = svgwrite.text.Text(
+        label,
+        insert=(round(cx, 2), round(cy + h * 0.35, 2)),
+        font_family=str(s["label_font_family"]),
+        font_size=float(s["label_font_size"]),
+        fill=str(s["label_font_color"]),
+    )
+    lbl["text-anchor"] = "middle"
+    lbl["dominant-baseline"] = "central"
+    group.add(lbl)
+    return group
+
+
+def primer_helix(
+    label: str,
+    position: tuple[float, float],
+    size: tuple[float, float] = (60.0, 36.0),
+    color: str | None = None,  # accepted for API parity; unused
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """Render an oligonucleotide primer as a short single DNA strand with a 3'
+    arrowhead marking the direction of polymerase extension.
+
+    Single-strand DNA (`dna_segment(double_helix=False)`, blue) so it reads as
+    DNA, kept short, with a filled arrowhead at the 3' (right) end. The strand
+    polyline is added first for `convention_check`.
+    """
+    s = {**DEFAULT_STYLE, **(style_dict or {})}
+    cx, cy = position
+    w, h = size
+
+    margin_x = max(4.0, w * 0.05)
+    amplitude = min(h * 0.26, float(s["dna_amplitude"]))
+    strand_cy = cy - h * 0.16
+    left = cx - w / 2 + margin_x
+    arrow = h * 0.18
+    right = cx + w / 2 - margin_x - arrow * 1.6
+
+    strand_grp = dna_segment(
+        (left, strand_cy), (right, strand_cy),
+        double_helix=False,
+        style_dict={**s, "dna_amplitude": amplitude},
+    )
+    group = svgwrite.container.Group()
+    group.add(strand_grp)
+
+    head = svgwrite.shapes.Polygon(
+        points=[
+            (right, strand_cy - arrow),
+            (right + arrow * 1.6, strand_cy),
+            (right, strand_cy + arrow),
+        ],
+        fill=str(s["dna_strand1_stroke"]),
+        stroke=str(s["dna_strand1_stroke"]),
+    )
+    group.add(head)
 
     lbl = svgwrite.text.Text(
         label,

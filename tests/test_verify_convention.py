@@ -76,6 +76,21 @@ def test_reaction_scheme_is_skipped(tmp_path):
     convention_check(ir, svg)  # no exception
 
 
+def test_complex_entity_renders_and_passes_convention(tmp_path):
+    """LT6 ext: a 'complex' entity renders its rect-based glyph and audits clean."""
+    ir = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="a", type=EntityType.PROTEIN, label="A"),
+            Entity(id="rnp", type=EntityType.COMPLEX, label="RNP"),
+        ],
+        relations=[Relation(source="a", target="rnp", type=RelationType.BINDS)],
+    )
+    svg = tmp_path / "fig.svg"
+    render_figure(ir, svg)
+    convention_check(ir, svg)  # no exception
+
+
 # ---------------------------------------------------------------------------
 # Failure mode — inhibition arrows
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 
+import pytest
 import svgwrite
 import svgwrite.container
 
@@ -16,6 +17,7 @@ from imageGen.primitives.proteins import (
     generic_protein,
     gpcr,
     kinase,
+    protein_complex,
     receptor,
     transcription_factor,
 )
@@ -43,6 +45,29 @@ def test_default_style_has_all_namespaced_keys():
 def test_generic_protein_returns_group():
     g = generic_protein("EGF", (100, 70))
     assert isinstance(g, svgwrite.container.Group)
+
+
+def test_protein_complex_returns_group():
+    g = protein_complex("RNP", (100, 70))
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_protein_complex_draws_two_subunit_rects_spanning_size():
+    """LT6 ext: a complex is two overlapping rects that together span ``size``,
+    so its rendered footprint matches ENTITY_BBOX[COMPLEX]."""
+    cx, cy, w, h = 100.0, 70.0, 72.0, 38.0
+    g = protein_complex("RNP", (cx, cy), size=(w, h))
+    rects = [el for el in g.elements if isinstance(el, svgwrite.shapes.Rect)]
+    assert len(rects) == 2
+
+    xs0 = [float(r["x"]) for r in rects]
+    ys0 = [float(r["y"]) for r in rects]
+    xs1 = [float(r["x"]) + float(r["width"]) for r in rects]
+    ys1 = [float(r["y"]) + float(r["height"]) for r in rects]
+    assert min(xs0) == pytest.approx(cx - w / 2)
+    assert max(xs1) == pytest.approx(cx + w / 2)
+    assert min(ys0) == pytest.approx(cy - h / 2)
+    assert max(ys1) == pytest.approx(cy + h / 2)
 
 
 def test_kinase_returns_group():

@@ -2,7 +2,7 @@
 
 ## How a session works
 
-1. **Read current state** — `README.md`, `ROADMAP.md`, `BACKLOG.md`, `~/Desktop/TODO.txt`.
+1. **Read current state** — `README.md`, `BACKLOG.md`, `V3_FEATURES.md`.
 2. **Write a plan** — describe what you are going to do in prose before writing any code. Share it.
 3. **Execute the plan** — implement, run tests (`~/Desktop/.venv/bin/pytest tests/ -v`), verify.
 4. **Report back** — what was done, what passed, any issues or blockers hit.

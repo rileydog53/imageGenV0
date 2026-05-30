@@ -177,10 +177,96 @@ def test_phosphorylates_uses_phosphorylation_arrow():
     assert RELATION_TO_ARROW[RelationType.PHOSPHORYLATES] is _phosphorylation_arrow
 
 
+def test_phospho_badge_occupied_bbox_brackets_the_midpoint():
+    """LT3: the reserved badge bbox is a square centered on the shaft midpoint."""
+    from imageGen.layout.pathway_layout import phospho_badge_occupied_bbox
+
+    entry = LayoutEntry(
+        primitive=_phosphorylation_arrow,
+        args=((0.0, 100.0), (200.0, 100.0)),
+        kwargs={"waypoints": None},
+        position=(0.0, 0.0),
+    )
+    bbox = phospho_badge_occupied_bbox(entry)
+    assert bbox is not None
+    x0, y0, x1, y1 = bbox
+    # Square centered on the midpoint (100, 100), side = 2 * radius (>= 14).
+    assert (x0 + x1) / 2 == pytest.approx(100.0)
+    assert (y0 + y1) / 2 == pytest.approx(100.0)
+    assert (x1 - x0) == pytest.approx(y1 - y0)
+    assert (x1 - x0) >= 14.0
+
+
+def test_phospho_badge_occupied_bbox_none_for_other_arrows():
+    """LT3: the badge reservation only applies to phosphorylation arrows."""
+    from imageGen.layout.pathway_layout import phospho_badge_occupied_bbox
+
+    entry = LayoutEntry(
+        primitive=arrows.activation_arrow,
+        args=((0.0, 0.0), (10.0, 0.0)),
+        kwargs={},
+        position=(0.0, 0.0),
+    )
+    assert phospho_badge_occupied_bbox(entry) is None
+
+
+# ---------------------------------------------------------------------------
+# LT4 — label-aware horizontal clamp
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_center_x_respects_label_extent():
+    """LT4: a center is pulled inward so a wide footprint stays in bounds."""
+    from imageGen.layout.pathway_layout import _clamp_center_x
+
+    # x wants the right edge (190) but a 100px-wide footprint (half 50) must
+    # keep 50px clear of the bound at 200 → clamped to 150.
+    assert _clamp_center_x(190.0, 0.0, 200.0, 50.0) == pytest.approx(150.0)
+    # Already-inside x is untouched.
+    assert _clamp_center_x(100.0, 0.0, 200.0, 50.0) == pytest.approx(100.0)
+
+
+def test_clamp_center_x_centers_when_footprint_wider_than_slot():
+    """LT4: a label wider than the whole slot is centered, not pinned to an edge."""
+    from imageGen.layout.pathway_layout import _clamp_center_x
+
+    # half_extent 120 > slot half-width (100) → bounds invert → center at 100.
+    assert _clamp_center_x(10.0, 0.0, 200.0, 120.0) == pytest.approx(100.0)
+
+
+def test_wide_label_entity_stays_within_narrow_canvas():
+    """LT4: an entity's label-extended footprint fits inside a narrow canvas.
+
+    Reproduces the panel-cell condition (narrow width, wide label) at the
+    layout level: the entity center must sit far enough from the right edge
+    that its rendered label does not cross the canvas boundary.
+    """
+    from imageGen.layout.pathway_layout import _label_extent_w
+
+    fig = Figure(
+        archetype=Archetype.WORKFLOW,
+        title="t",
+        entities=[
+            Entity(id="a", type=EntityType.SAMPLE, label="A"),
+            Entity(id="b", type=EntityType.EQUIPMENT, label="Enzymatic digestion"),
+        ],
+        relations=[Relation(source="a", target="b", type=RelationType.GENERIC)],
+    )
+    canvas_w = 275.0
+    entries = layout_pathway(
+        fig, layout_params={"pathway_canvas": (canvas_w, 536.0)}
+    )
+    by_id = {e.ir_id: e for e in _entity_entries(entries)}
+    cx, _cy = by_id["b"].args[1]
+    half = _label_extent_w("Enzymatic digestion") / 2
+    assert cx + half <= canvas_w + 0.5  # label right edge stays in-canvas
+
+
 def test_entity_type_routes_to_specific_primitive():
     assert ENTITY_TO_PRIMITIVE[EntityType.KINASE] is proteins.kinase
     assert ENTITY_TO_PRIMITIVE[EntityType.RECEPTOR] is proteins.receptor
     assert ENTITY_TO_PRIMITIVE[EntityType.LIGAND] is proteins.generic_protein
+    assert ENTITY_TO_PRIMITIVE[EntityType.COMPLEX] is proteins.protein_complex
 
 
 # ---------------------------------------------------------------------------

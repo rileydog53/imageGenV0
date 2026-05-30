@@ -13,7 +13,7 @@ from typing import Callable
 import svgwrite.container
 
 from imageGen.ir.schema import EntityType, Figure
-from imageGen.primitives import nucleic_acids, proteins
+from imageGen.primitives import glyphs, nucleic_acids, proteins
 
 # Per-EntityType bounding boxes (w, h), tracking each primitive's default
 # size in `primitives/proteins.py`. Used to inset arrow endpoints to the
@@ -22,10 +22,12 @@ from imageGen.primitives import nucleic_acids, proteins
 # collision-aware label anchoring.
 ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
     EntityType.PROTEIN:    (60.0, 30.0),
+    EntityType.COMPLEX:    (72.0, 38.0),
     EntityType.LIGAND:     (60.0, 30.0),
     EntityType.RECEPTOR:   (28.0, 60.0),
     EntityType.KINASE:     (70.0, 32.0),
     EntityType.GENE:       (80.0, 40.0),
+    EntityType.RNA:        (80.0, 40.0),
     EntityType.METABOLITE: (60.0, 30.0),
     EntityType.CELL:       (60.0, 30.0),
     EntityType.ORGANELLE:  (60.0, 30.0),
@@ -39,10 +41,12 @@ ENTITY_BBOX: dict[EntityType, tuple[float, float]] = {
 # when anchoring labels to entity LayoutEntries.
 ENTITY_TO_PRIMITIVE: dict[EntityType, Callable[..., svgwrite.container.Group]] = {
     EntityType.PROTEIN:    proteins.generic_protein,
+    EntityType.COMPLEX:    proteins.protein_complex,
     EntityType.LIGAND:     proteins.generic_protein,
     EntityType.RECEPTOR:   proteins.receptor,
     EntityType.KINASE:     proteins.kinase,
     EntityType.GENE:       nucleic_acids.gene_helix,
+    EntityType.RNA:        nucleic_acids.rna_helix,
     EntityType.METABOLITE: proteins.generic_protein,
     EntityType.CELL:       proteins.generic_protein,
     EntityType.ORGANELLE:  proteins.generic_protein,
@@ -63,22 +67,65 @@ ENTITY_TO_PRIMITIVE: dict[EntityType, Callable[..., svgwrite.container.Group]] =
 
 PRIMITIVE_REGISTRY: dict[str, Callable[..., svgwrite.container.Group]] = {
     "generic_protein":       proteins.generic_protein,
+    "protein_complex":       proteins.protein_complex,
     "kinase":                proteins.kinase,
     "receptor":              proteins.receptor,
     "gpcr":                  proteins.gpcr,
     "transcription_factor":  proteins.transcription_factor,
     "gene_helix":            nucleic_acids.gene_helix,
+    "rna_helix":             nucleic_acids.rna_helix,
+    # v2.x expansion glyphs — cell / signalling
+    "antibody":              glyphs.antibody,
+    "ion_channel":           glyphs.ion_channel,
+    "transporter":           glyphs.transporter,
+    "pump":                  glyphs.pump,
+    "phosphatase":           glyphs.phosphatase,
+    "ribosome":              glyphs.ribosome,
+    "vesicle":               glyphs.vesicle,
+    # v2.x expansion glyphs — lab equipment
+    "flask":                 glyphs.flask,
+    "centrifuge":            glyphs.centrifuge,
+    "flow_cytometer":        glyphs.flow_cytometer,
+    "sequencer":             glyphs.sequencer,
+    "petri_dish":            glyphs.petri_dish,
+    "syringe":               glyphs.syringe,
+    # v2.x expansion glyphs — nucleic acids
+    "mrna_helix":            nucleic_acids.mrna_helix,
+    "primer_helix":          nucleic_acids.primer_helix,
+}
+
+# Explicit (w, h) for registry primitives that have no ENTITY_TO_PRIMITIVE
+# entry to inherit a bbox from. Keeps arrow insets and collision bboxes sane
+# for the expansion glyphs (which don't map 1:1 to an EntityType).
+_PRIMITIVE_BBOX_OVERRIDE: dict[Callable[..., svgwrite.container.Group], tuple[float, float]] = {
+    glyphs.antibody:        (50.0, 50.0),
+    glyphs.ion_channel:     (40.0, 50.0),
+    glyphs.transporter:     (40.0, 50.0),
+    glyphs.pump:            (44.0, 52.0),
+    glyphs.phosphatase:     (70.0, 32.0),
+    glyphs.ribosome:        (50.0, 50.0),
+    glyphs.vesicle:         (44.0, 44.0),
+    glyphs.flask:           (44.0, 56.0),
+    glyphs.centrifuge:      (54.0, 54.0),
+    glyphs.flow_cytometer:  (64.0, 50.0),
+    glyphs.sequencer:       (64.0, 48.0),
+    glyphs.petri_dish:      (60.0, 40.0),
+    glyphs.syringe:         (76.0, 30.0),
+    nucleic_acids.mrna_helix:   (90.0, 40.0),
+    nucleic_acids.primer_helix: (60.0, 36.0),
 }
 
 # Canonical (w, h) for each registered primitive — used when a primitive
 # override is applied so arrow insets and collision bboxes stay correct.
-# Derived from ENTITY_BBOX for the first EntityType that maps to each
-# primitive; falls back to the generic-protein size for primitives not in
-# ENTITY_TO_PRIMITIVE (shouldn't happen with the current registry).
+# An explicit override wins; otherwise inherit from ENTITY_BBOX for the first
+# EntityType that maps to the primitive; otherwise the generic-protein size.
 PRIMITIVE_TO_BBOX: dict[Callable[..., svgwrite.container.Group], tuple[float, float]] = {
-    prim: next(
-        (ENTITY_BBOX[et] for et, p in ENTITY_TO_PRIMITIVE.items() if p is prim),
-        (60.0, 30.0),
+    prim: _PRIMITIVE_BBOX_OVERRIDE.get(
+        prim,
+        next(
+            (ENTITY_BBOX[et] for et, p in ENTITY_TO_PRIMITIVE.items() if p is prim),
+            (60.0, 30.0),
+        ),
     )
     for prim in PRIMITIVE_REGISTRY.values()
 }

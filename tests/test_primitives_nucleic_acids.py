@@ -12,14 +12,26 @@ from __future__ import annotations
 import svgwrite
 import svgwrite.container
 
+import re
+
 from imageGen.primitives.nucleic_acids import (
     DEFAULT_STYLE,
     chromatin,
     dna_segment,
     gene_helix,
+    rna_helix,
     rna_segment,
 )
 from tests._helpers import render_group_to_png
+
+
+def _polyline_x_coords(svg: str) -> list[float]:
+    """All x-coordinates from every <polyline points="..."> in the SVG."""
+    xs: list[float] = []
+    for pts in re.findall(r'points="([^"]+)"', svg):
+        for pair in pts.split():
+            xs.append(float(pair.split(",")[0]))
+    return xs
 
 
 # ---------------------------------------------------------------------------
@@ -218,3 +230,79 @@ def test_gene_helix_render_to_png():
     out = render_group_to_png(g, "gene_helix.png", canvas=(80, 40))
     assert out.exists(), f"PNG not written: {out}"
     assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"
+
+
+# ---------------------------------------------------------------------------
+# LT7 — broken DNA (double-strand break)
+# ---------------------------------------------------------------------------
+
+def test_broken_dna_segment_returns_group():
+    g = dna_segment((0.0, 50.0), (200.0, 50.0), broken=True)
+    assert isinstance(g, svgwrite.container.Group)
+
+
+def test_broken_dna_has_coordinate_gap_on_both_strands():
+    """A break centred at 0.5 must leave a strand-free axis gap there."""
+    g = dna_segment((0.0, 50.0), (200.0, 50.0), broken=True,
+                    style_dict={"dna_break_gap": 20.0})
+    xs = _polyline_x_coords(g.tostring())
+    # Break centred at x=100 with a 20px gap → no strand point in (90, 110).
+    assert xs, "expected strand polylines"
+    assert not [x for x in xs if 90.0 < x < 110.0]
+    # Strands still span both flanks.
+    assert min(xs) < 90.0 and max(xs) > 110.0
+
+
+def test_broken_dna_break_position_shifts_gap():
+    g = dna_segment((0.0, 50.0), (200.0, 50.0), broken=True, break_position=0.25,
+                    style_dict={"dna_break_gap": 20.0})
+    xs = _polyline_x_coords(g.tostring())
+    # Gap now around x=50; no strand points in (40, 60), but present around 100.
+    assert not [x for x in xs if 40.0 < x < 60.0]
+    assert [x for x in xs if 90.0 < x < 110.0]
+
+
+def test_unbroken_dna_has_no_gap():
+    """Regression: a normal segment is continuous across the midpoint."""
+    g = dna_segment((0.0, 50.0), (200.0, 50.0))
+    xs = _polyline_x_coords(g.tostring())
+    assert [x for x in xs if 90.0 < x < 110.0]
+
+
+def test_gene_helix_broken_via_param():
+    g = gene_helix("DSB", (100.0, 100.0), size=(120.0, 40.0), broken=True)
+    xs = _polyline_x_coords(g.tostring())
+    # Helix spans roughly [46, 154]; centre break leaves a gap near x=100.
+    assert xs and not [x for x in xs if 96.0 < x < 104.0]
+
+
+def test_gene_helix_broken_via_style_key():
+    g = gene_helix("DSB", (100.0, 100.0), size=(120.0, 40.0),
+                   style_dict={"dna_break": True})
+    xs = _polyline_x_coords(g.tostring())
+    assert xs and not [x for x in xs if 96.0 < x < 104.0]
+
+
+# ---------------------------------------------------------------------------
+# LT8 — RNA entity primitive (rna_helix)
+# ---------------------------------------------------------------------------
+
+def test_rna_helix_returns_group():
+    assert isinstance(rna_helix("sgRNA", (100.0, 100.0)), svgwrite.container.Group)
+
+
+def test_rna_helix_is_orange_not_dna_blue():
+    svg = rna_helix("sgRNA", (100.0, 100.0)).tostring().upper()
+    assert "E65100" in svg              # RNA orange
+    assert "1565C0" not in svg          # not DNA strand-1 blue
+
+
+def test_rna_helix_renders_label():
+    svg = rna_helix("miR-21", (100.0, 100.0)).tostring()
+    assert "miR-21" in svg
+
+
+def test_rna_helix_render_to_png():
+    g = rna_helix("sgRNA", (40.0, 20.0))
+    out = render_group_to_png(g, "rna_helix.png", canvas=(80, 40))
+    assert out.exists() and out.stat().st_size > 100

@@ -135,6 +135,26 @@ def test_verify_flag_prints_report(tmp_path, capsys):
     assert "semantic=OK" in captured.out
 
 
+def test_autocrop_flag_trims_dead_margin(tmp_path):
+    """LT5: --autocrop rewrites the primary SVG so it ships without dead margin.
+
+    The MAPK fixture renders into an 800x600 canvas it doesn't fill, so the
+    default render reports needs_crop=True. With --autocrop the viewport is
+    trimmed in place and the figure verifies needs_crop=False.
+    """
+    from imageGen.verify.legibility_check import legibility_check
+
+    plain = tmp_path / "plain.svg"
+    main([MAPK, "-o", str(plain)])
+    assert legibility_check(plain).needs_crop is True
+
+    cropped = tmp_path / "cropped.svg"
+    rc = main([MAPK, "-o", str(cropped), "--autocrop"])
+    assert rc == 0
+    assert "viewBox" in cropped.read_text()
+    assert legibility_check(cropped).needs_crop is False
+
+
 def test_canvas_flag_pins_size(tmp_path):
     out = tmp_path / "fig.svg"
     rc = main([MAPK, "-o", str(out), "--canvas", "1500x900"])

@@ -314,6 +314,38 @@ def _dispatch_layout(
     )
 
 
+def _panel_cell_bounds(ir: Figure) -> dict[str, tuple[float, float]]:
+    """Map each top-level panel id → its content-cell ``(w, h)`` in local coords.
+
+    LT4. ``layout_panel`` lays each panel's content out in (0, 0)-origin
+    coordinates sized to ``(pw, ph - title_h)``; this recomputes that cell so
+    ``place_labels`` can bound candidates to the cell. Mirrors layout_panel's
+    geometry with ``PANEL_DEFAULT_PARAMS`` (the compositor calls layout_panel
+    with no param overrides).
+    """
+    from imageGen.layout.panel_layout import (  # noqa: PLC0415
+        PANEL_DEFAULT_PARAMS,
+        _cell_size,
+        _grid_extent,
+        _panel_rect,
+    )
+
+    p = PANEL_DEFAULT_PARAMS
+    margin = float(p["panel_margin"])
+    gutter = float(p["panel_gutter"])
+    title_h = float(p["panel_title_height"]) if p["panel_show_chrome"] else 0.0
+    rows, cols = _grid_extent(ir)
+    cell_w, cell_h = _cell_size(p["panel_canvas"], margin, gutter, rows, cols)
+
+    bounds: dict[str, tuple[float, float]] = {}
+    for panel in ir.panels:
+        _x, _y, pw, ph = _panel_rect(
+            panel.grid, p["panel_origin"], margin, gutter, cell_w, cell_h
+        )
+        bounds[panel.id] = (pw, ph - title_h)
+    return bounds
+
+
 def _place_labels_per_panel(
     ir: Figure,
     entries: list[LayoutEntry],
@@ -347,6 +379,13 @@ def _place_labels_per_panel(
         key = entry.panel_chain[0] if entry.panel_chain else None
         buckets.setdefault(key, []).append(entry)
 
+    # LT4: each panel's sub-engine lays out in (0, 0)-origin local coords sized
+    # to its content cell, so the canvas bound for that panel's place_labels
+    # call must be the cell — not the full figure canvas, which let labels
+    # spill out of their cell into adjacent panels. Mirror layout_panel's grid
+    # geometry (the compositor calls layout_panel with default params).
+    cell_bounds = _panel_cell_bounds(ir)
+
     result: list[LayoutEntry] = list(buckets[None])
     for panel in ir.panels:
         bucket = buckets.get(panel.id, [])
@@ -359,7 +398,7 @@ def _place_labels_per_panel(
         effective_style = (panel_styles or {}).get(panel.id, style_dict)
         placed = place_labels(
             bucket, requests, style_dict=effective_style,
-            canvas=canvas, strict_labels=strict_labels,
+            canvas=cell_bounds.get(panel.id, canvas), strict_labels=strict_labels,
         )
         result.extend(placed[:len(bucket)])
         for label_entry in placed[len(bucket):]:

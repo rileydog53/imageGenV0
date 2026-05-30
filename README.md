@@ -162,5 +162,5 @@ change regenerate with `IMAGEGEN_REGEN_GOLDEN=1 pytest`.
 - **[FEEDBACK.md](FEEDBACK.md)** — log a wrong or low-quality figure here.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — for developers and AI agents
   extending the project: workflow, conventions, hard rules.
-- **[ROADMAP.md](ROADMAP.md)** — phase status (all 8 phases complete at v1.0).
+- **[V3_FEATURES.md](V3_FEATURES.md)** — out-of-scope features parked for a possible v3.
 - **[DECISIONS.md](DECISIONS.md)** — cross-phase architectural decisions.

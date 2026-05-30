@@ -54,6 +54,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import math
 import warnings
 
 import networkx as nx
@@ -78,6 +79,7 @@ from imageGen.layout._geom import (
     PRIMITIVE_TO_BBOX,
     max_entity_bbox,
 )
+from imageGen.layout._layered import order_within_ranks, rank_nodes, tighten_ranks
 from imageGen.layout.types import LayoutEntry
 from imageGen.primitives import arrows
 from imageGen.primitives._text import centered_label as _centered_label
@@ -122,6 +124,14 @@ PATHWAY_DEFAULT_PARAMS: dict[str, Any] = {
     # the first lane; `arch_lane_gap` is the spacing between successive lanes.
     "pathway_arch_clearance":    12.0,
     "pathway_arch_lane_gap":     14.0,
+    # LT1: ring (circular) layout for cyclic pathways. `ring_node_gap` is the
+    # minimum clear gap between adjacent node bboxes along the ring; the radius
+    # grows so N nodes fit without touching. `ring_min_radius` is a floor for
+    # very small cycles. `ring_label_margin` reserves room outside the ring for
+    # edge labels (pushed radially outward).
+    "pathway_ring_node_gap":     28.0,
+    "pathway_ring_min_radius":   120.0,
+    "pathway_ring_label_margin": 72.0,
 }
 
 
@@ -131,6 +141,35 @@ PATHWAY_DEFAULT_PARAMS: dict[str, Any] = {
 
 _BAND_BASELINE = 100.0   # px — matches v1: 600 / 6 bands = 100 px/band
 _LABEL_MARGIN  =  40.0   # px — headroom for band label + top/bottom breathing room
+_ENTITY_LABEL_FONT = 11.0  # px — default entity-label font (mirrors label_placement)
+
+
+def _label_extent_w(label: str, font_size: float = _ENTITY_LABEL_FONT) -> float:
+    """Estimated rendered width of a centered entity label.
+
+    Mirrors ``label_placement._estimate_text_bbox`` (≈0.6 em/char) so the
+    layout's idea of how wide a label draws matches what the legibility
+    audit measures. Used to keep an entity's label inside the canvas / panel
+    cell, not just its box (LT4).
+    """
+    return max(1, len(label)) * font_size * 0.6
+
+
+def _clamp_center_x(
+    x: float, lo_bound: float, hi_bound: float, half_extent: float
+) -> float:
+    """Clamp an entity center x so a ``half_extent``-wide footprint stays in bounds.
+
+    ``lo_bound`` / ``hi_bound`` are the usable left/right edges (canvas inset by
+    ``edge_margin``). When the footprint is wider than the slot (label wider than
+    the whole cell), the bounds invert; we center it as the least-bad option
+    rather than pinning it to one edge (LT4).
+    """
+    lo = lo_bound + half_extent
+    hi = hi_bound - half_extent
+    if lo > hi:
+        return (lo_bound + hi_bound) / 2
+    return max(lo, min(x, hi))
 
 
 def _feedback_arc_dag(dg: nx.DiGraph) -> nx.DiGraph:
@@ -171,6 +210,183 @@ def _max_topo_siblings(figure: Figure) -> int:
         DG.add_edge(r.source, r.target)
     dag = _feedback_arc_dag(DG)
     return max((len(list(gen)) for gen in nx.topological_generations(dag)), default=1)
+
+
+# ---------------------------------------------------------------------------
+# LT1: ring (circular) layout for cyclic pathways
+# ---------------------------------------------------------------------------
+
+def _is_pure_single_cycle(dg: nx.DiGraph) -> bool:
+    """True if `dg` is one simple directed cycle through every node.
+
+    A pure cycle has N nodes, N edges, every node in/out-degree exactly 1, and
+    is strongly connected (Krebs: cit→iso→…→oaa→cit). This is the unambiguous
+    case we ring automatically; branchy or convergent graphs do not qualify.
+    """
+    n = dg.number_of_nodes()
+    if n < 3 or dg.number_of_edges() != n:
+        return False
+    if any(dg.in_degree(v) != 1 or dg.out_degree(v) != 1 for v in dg):
+        return False
+    return nx.is_strongly_connected(dg)
+
+
+def _split_dangling(dg: nx.DiGraph) -> tuple[nx.DiGraph, list[str]]:
+    """Partition `dg` into a cycle subgraph and dangling entry nodes.
+
+    Dangling nodes are those with in-degree 0 (pure entry points — they feed
+    into the cycle but receive no edges from it). Removal is iterated until
+    stable, so chains of entry nodes (A→B→Citrate where A and B are both
+    external) are fully stripped. Returns (cycle_subgraph, dangling_list).
+    The cycle_subgraph is a copy; `dg` is not mutated.
+    """
+    working = dg.copy()
+    dangling: list[str] = []
+    while True:
+        leaves = [v for v in working if working.in_degree(v) == 0]
+        if not leaves:
+            break
+        dangling.extend(leaves)
+        working.remove_nodes_from(leaves)
+    return working, dangling
+
+
+def _ring_order(figure: Figure) -> tuple[list[str], list[str]] | None:
+    """Return (ring_order, dangling_nodes) if this figure should use ring layout.
+
+    Ring layout applies to compartment-free pathways when either:
+    - The full relation graph is a pure single cycle (auto-detected). All nodes
+      must have in/out-degree exactly 1 — no dandling entry nodes. This is the
+      strict unambiguous case (e.g. an 8-node Krebs cycle with no inputs shown).
+    - `layout_hint == "circular"` forces ring mode. In this case dangling entry
+      nodes (in-degree 0) are stripped from the cycle graph and placed outside
+      the ring near their ring target. Use this mode when you need to show
+      metabolic inputs (e.g. Acetyl-CoA feeding into Citrate).
+
+    Returns None if ring layout does not apply or the cycle has <3 nodes.
+    """
+    if figure.compartments:  # real compartments → keep band layout
+        if figure.layout_hint == "circular":
+            warnings.warn(
+                "layout_hint='circular' ignored: ring layout requires a "
+                "compartment-free figure.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return None
+
+    DG = nx.DiGraph()
+    for e in figure.entities:
+        DG.add_node(e.id)
+    for r in figure.relations:
+        DG.add_edge(r.source, r.target)
+
+    forced = figure.layout_hint == "circular"
+
+    if forced:
+        # Strip dangling entry nodes so the cycle subgraph can be detected.
+        cycle_dg, dangling = _split_dangling(DG)
+        if not _is_pure_single_cycle(cycle_dg):
+            return None
+        if cycle_dg.number_of_nodes() < 3:
+            return None
+        dag = _feedback_arc_dag(cycle_dg)
+    else:
+        # Strict auto-detect: all nodes must be on the cycle.
+        if not _is_pure_single_cycle(DG):
+            return None
+        if DG.number_of_nodes() < 3:
+            return None
+        dangling = []
+        dag = _feedback_arc_dag(DG)
+
+    ranks = rank_nodes(dag)
+    order_idx = order_within_ranks(dag, ranks)
+    order = sorted(ranks, key=lambda n: (ranks[n], order_idx.get(n, 0), n))
+    return order, dangling
+
+
+def _ring_geometry(
+    n: int,
+    max_entity_w: float,
+    max_entity_h: float,
+    params: dict,
+    origin: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float], float]:
+    """Return ((canvas_w, canvas_h), (center_x, center_y), radius) for an
+    n-node ring. Radius is chosen so adjacent node bboxes keep at least
+    `ring_node_gap` clear; the canvas is square with room for outward labels.
+    """
+    node_span = max(max_entity_w, max_entity_h)
+    node_gap = float(params["pathway_ring_node_gap"])
+    min_radius = float(params["pathway_ring_min_radius"])
+    label_margin = float(params["pathway_ring_label_margin"])
+    edge_margin = float(params["pathway_edge_margin"])
+
+    # Chord between adjacent nodes is 2*R*sin(pi/n); require it to clear the
+    # node span plus the gap. Solve for R.
+    chord_min = node_span + node_gap
+    radius = max(min_radius, chord_min / (2.0 * math.sin(math.pi / n)))
+
+    side = 2.0 * (radius + node_span / 2.0 + edge_margin + label_margin)
+    ox, oy = origin
+    center = (ox + side / 2.0, oy + side / 2.0)
+    return (side, side), center, radius
+
+
+def _ring_positions(
+    order: list[str],
+    dangling: list[str],
+    entity_by_id: dict,
+    entity_sizes: dict,
+    params: dict,
+    origin: tuple[float, float],
+    relations: list,
+) -> tuple[dict[str, tuple[float, float]], tuple[float, float], tuple[float, float]]:
+    """Place ring nodes evenly on a circle; place dangling entry nodes outside.
+
+    Ring nodes sit at angle `-pi/2 + 2*pi*i/n` (first node at top, clockwise).
+    Dangling nodes (in-degree 0) are positioned radially outside the ring,
+    offset from their first ring target at 1.6× the ring radius from center.
+    Multiple dangling nodes targeting the same ring node are fanned ±30°.
+    Returns (positions, canvas, center).
+    """
+    n = len(order)
+    all_nodes = list(order) + list(dangling)
+    max_w = max(entity_sizes[entity_by_id[i].type][0] for i in all_nodes)
+    max_h = max(entity_sizes[entity_by_id[i].type][1] for i in all_nodes)
+    canvas, center, radius = _ring_geometry(n, max_w, max_h, params, origin)
+    cx, cy = center
+
+    # Place ring nodes on circle
+    ring_theta: dict[str, float] = {}
+    positions: dict[str, tuple[float, float]] = {}
+    for i, node in enumerate(order):
+        theta = -math.pi / 2.0 + 2.0 * math.pi * i / n
+        ring_theta[node] = theta
+        positions[node] = (cx + radius * math.cos(theta), cy + radius * math.sin(theta))
+
+    if dangling:
+        # Build map: ring_target → list of dangling nodes pointing to it
+        target_map: dict[str, list[str]] = {}
+        for d in dangling:
+            targets = [r.target for r in relations if r.source == d and r.target in positions]
+            ring_target = targets[0] if targets else order[0]
+            target_map.setdefault(ring_target, []).append(d)
+
+        outer_radius = radius * 1.6
+        fan_step = math.radians(30)
+        for ring_target, dlist in target_map.items():
+            base_theta = ring_theta.get(ring_target, -math.pi / 2.0)
+            offsets = [0.0] if len(dlist) == 1 else [
+                fan_step * (i - (len(dlist) - 1) / 2.0) for i in range(len(dlist))
+            ]
+            for d, offset in zip(dlist, offsets):
+                theta = base_theta + offset
+                positions[d] = (cx + outer_radius * math.cos(theta),
+                                cy + outer_radius * math.sin(theta))
+
+    return positions, canvas, center
 
 
 def _compute_band_heights(
@@ -235,6 +451,16 @@ def compute_pathway_canvas(
     max_entity_h = raw_max_h * scale
     padding     = float(params["pathway_band_padding"])
     edge_margin = float(params["pathway_edge_margin"])
+
+    # LT1: ring layout → square canvas sized from the ring geometry.
+    _ring_result = _ring_order(figure)
+    if _ring_result is not None:
+        _ring_nodes, _ring_dangling = _ring_result
+        canvas, _center, _radius = _ring_geometry(
+            len(_ring_nodes), max_entity_w, max_entity_h, params,
+            params["pathway_origin"],
+        )
+        return canvas
 
     compartments, location_map = _resolve_compartments(figure)
     by_band: dict[str, list] = {}
@@ -343,6 +569,24 @@ def _relation_glyph(
     ))
 
 
+def _phospho_badge_geom(
+    pts: list[tuple[float, float]],
+    style: dict,
+) -> tuple[tuple[float, float], float]:
+    """Return the ('P' badge center, radius) for a phosphorylation shaft.
+
+    Single source of truth for the badge placement: both
+    ``_phosphorylation_arrow`` (which draws it) and
+    ``phospho_badge_occupied_bbox`` (which reserves its footprint in the
+    label engine) call this, so the rendered glyph and the collision box
+    can never drift apart. Radius mirrors ``_relation_glyph``.
+    """
+    cx, cy = _midpoint_of_path(pts)
+    font_size = float(style.get("label_font_size", 11))
+    r = max(7.0, font_size * 0.75)
+    return (cx, cy), r
+
+
 def _phosphorylation_arrow(
     start: tuple[float, float],
     end: tuple[float, float],
@@ -359,9 +603,28 @@ def _phosphorylation_arrow(
     g = arrows.activation_arrow(start, end, style_dict=style_dict, waypoints=waypoints)
     s = {**_PHOSPHO_BADGE_DEFAULTS, **(style_dict or {})}
     pts = waypoints if waypoints else [start, end]
-    cx, cy = _midpoint_of_path(pts)
+    (cx, cy), _r = _phospho_badge_geom(pts, s)
     _relation_glyph(g, cx, cy, "P", s)
     return g
+
+
+def phospho_badge_occupied_bbox(entry) -> tuple[float, float, float, float] | None:
+    """Bbox of the 'P' badge for a phosphorylation-arrow ``LayoutEntry``.
+
+    LT3. The badge carries a ``<text>`` 'P' that the legibility audit treats
+    as a label; without reserving its footprint, a relation label anchored at
+    the same shaft midpoint renders on top of it. ``label_placement._entry_bbox``
+    calls this so the badge joins the placement ``occupied`` set and labels are
+    steered clear. Returns ``None`` for any non-phosphorylation entry.
+    """
+    if entry.primitive is not _phosphorylation_arrow:
+        return None
+    start, end = entry.args
+    waypoints = entry.kwargs.get("waypoints")
+    style = {**_PHOSPHO_BADGE_DEFAULTS, **(entry.kwargs.get("style_dict") or {})}
+    pts = waypoints if waypoints else [start, end]
+    (cx, cy), r = _phospho_badge_geom(pts, style)
+    return (cx - r, cy - r, cx + r, cy + r)
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +638,10 @@ RELATION_TO_ARROW: dict[RelationType, Callable[..., svgwrite.container.Group]] =
     RelationType.TRANSLOCATES:   arrows.translocation_arrow,
     RelationType.PHOSPHORYLATES: _phosphorylation_arrow,  # V2/L4: annotated with 'P' badge
     RelationType.TRANSCRIBES:    arrows.activation_arrow,
+    RelationType.CATALYZES:      arrows.catalysis_arrow,
+    RelationType.CLEAVES:        arrows.cleavage_arrow,
+    RelationType.TRANSPORTS:     arrows.transport_arrow,
+    RelationType.RECRUITS:       arrows.recruitment_arrow,
     RelationType.GENERIC:        arrows.activation_arrow,
 }
 
@@ -539,17 +806,27 @@ def _graph_positions(
     # the same center_y. When real compartments exist, band-snap is preserved.
     use_topo_y_mode = len(bands) == 1 and _IMPLICIT_COMPARTMENT_ID in bands
 
-    # Precompute normalised [0,1] y position per entity from topological sibling
-    # index. For DAGs: entities in the same generation are evenly spread across
-    # [0,1]; a lone node in its generation is centred at 0.5. For non-DAGs (or
-    # when there are no edges) this dict is empty and we fall back to center_y.
-    topo_y: dict[str, float] = {}
-    if use_topo_y_mode and _dag_for_ranking is not None:
-        for gen in nx.topological_generations(_dag_for_ranking):
-            gen_list = sorted(gen)  # sort by id for determinism
-            n_sibs = len(gen_list)
-            for i, node in enumerate(gen_list):
-                topo_y[node] = (i + 0.5) / n_sibs
+    # LT2: layered (Sugiyama-style) layout for compartment-free DAGs. Rank each
+    # node by longest-path depth (x column) and order nodes within a rank to
+    # minimise edge crossings (y position). This replaces the spring-x ordering
+    # + flat sibling spread so convergence reads as columns funnelling into one
+    # node and divergence as one column fanning out. Only active when there are
+    # no real compartments and the graph has edges to rank; otherwise the
+    # band-snap path below is used unchanged.
+    use_layered = use_topo_y_mode and _dag_for_ranking is not None
+    layered_rank: dict[str, int] = {}
+    layered_order: dict[str, int] = {}
+    layered_rank_size: dict[int, int] = {}
+    layered_max_rank = 0
+    if use_layered:
+        # LT10: tighten ASAP ranks toward consumers so a no-predecessor cofactor
+        # (e.g. coagulation Factor V → Prothrombin) sits beside the node it
+        # modifies instead of pinned to column 0 with a long over-arching edge.
+        layered_rank = tighten_ranks(_dag_for_ranking, rank_nodes(_dag_for_ranking))
+        layered_order = order_within_ranks(_dag_for_ranking, layered_rank)
+        layered_max_rank = max(layered_rank.values()) if layered_rank else 0
+        for r in layered_rank.values():
+            layered_rank_size[r] = layered_rank_size.get(r, 0) + 1
 
     pos: dict[str, tuple[float, float]] = {}
     for band_id, ents in by_band.items():
@@ -565,6 +842,31 @@ def _graph_positions(
         n_rows = max(1, (n + max_per_row - 1) // max_per_row)
 
         for i, e in enumerate(sorted_ents):
+            ew, eh = _sizes.get(e.type, (30.0, 30.0))
+
+            # LT2: layered DAG placement — x from longest-path rank column,
+            # y from crossing-reduced order within the rank.
+            if use_layered and e.id in layered_rank:
+                rank = layered_rank[e.id]
+                if layered_max_rank > 0:
+                    x = ox + padding + inner_w * rank / layered_max_rank
+                else:
+                    x = ox + w / 2
+                # LT4: clamp by the label extent (not just the box) so a wide
+                # label can't spill past the canvas / panel-cell edge.
+                half_x = max(ew, _label_extent_w(e.label)) / 2
+                x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
+                k = layered_rank_size.get(rank, 1)
+                t = (layered_order.get(e.id, 0) + 0.5) / k
+                usable_top    = band_top    + edge_margin + eh / 2
+                usable_bottom = band_bottom - edge_margin - eh / 2
+                if usable_bottom > usable_top:
+                    y = usable_top + t * (usable_bottom - usable_top)
+                else:
+                    y = center_y
+                pos[e.id] = (x, y)
+                continue
+
             row = i // max_per_row
             col = i % max_per_row
             # cols_in_row matters only for the final, possibly-partial row.
@@ -573,28 +875,18 @@ def _graph_positions(
                 x = ox + w / 2
             else:
                 x = ox + padding + inner_w * col / (cols_in_row - 1)
-            # L15: clamp centers so entity bboxes stay inside the canvas.
-            ew, eh = _sizes.get(e.type, (30.0, 30.0))
-            x = max(ox + edge_margin + ew / 2, min(x, ox + w - edge_margin - ew / 2))
+            # L15 + LT4: clamp centers so the entity box *and its label* stay
+            # inside the canvas (a wide label otherwise spills past the edge).
+            half_x = max(ew, _label_extent_w(e.label)) / 2
+            x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
 
-            # L20: use topological sibling y in single-implicit-band mode.
-            # Only fires for single-row bands in DAG figures with ≥2 siblings
-            # at some rank (topo_y maps those nodes to non-centre t values).
-            if use_topo_y_mode and n_rows == 1 and e.id in topo_y:
-                usable_top    = band_top    + edge_margin + eh / 2
-                usable_bottom = band_bottom - edge_margin - eh / 2
-                if usable_bottom > usable_top:
-                    y = usable_top + topo_y[e.id] * (usable_bottom - usable_top)
-                else:
-                    y = center_y
-            else:
-                # Stack rows vertically, centered around the band center.
-                y_offset = (row - (n_rows - 1) / 2) * (row_h + row_v_gap)
-                raw_y = center_y + y_offset
-                y = max(
-                    band_top + edge_margin + eh / 2,
-                    min(raw_y, band_bottom - edge_margin - eh / 2),
-                )
+            # Stack rows vertically, centered around the band center.
+            y_offset = (row - (n_rows - 1) / 2) * (row_h + row_v_gap)
+            raw_y = center_y + y_offset
+            y = max(
+                band_top + edge_margin + eh / 2,
+                min(raw_y, band_bottom - edge_margin - eh / 2),
+            )
             pos[e.id] = (x, y)
     return pos
 
@@ -1064,11 +1356,29 @@ def layout_pathway(
     }
 
     compartments, location_map = _resolve_compartments(figure)
+    entity_by_id = {e.id: e for e in figure.entities}
+
+    # LT1: ring layout for compartment-free cyclic pathways. Nodes are placed
+    # on a circle and arrows drawn as straight chords between adjacent nodes,
+    # so the cycle reads as a ring instead of a band with a long closing arch.
+    _ring_result = _ring_order(figure)
+    ring_mode = _ring_result is not None
+    ring_order: list[str] = []
+    ring_dangling: list[str] = []
+    if ring_mode:
+        ring_order, ring_dangling = _ring_result  # type: ignore[misc]
+        positions, canvas, _ring_center = _ring_positions(
+            ring_order, ring_dangling, entity_by_id, effective_bbox, params,
+            params["pathway_origin"], figure.relations,
+        )
+        bands = {}
 
     # V2 / L3: compute per-band heights dynamically unless the caller
     # explicitly supplied a pathway_canvas override (honour their envelope).
     _user_set_canvas = "pathway_canvas" in (layout_params or {})
-    if _user_set_canvas:
+    if ring_mode:
+        pass  # ring positions/canvas already set above
+    elif _user_set_canvas:
         per_band_heights = None  # fall back to equal-split of supplied canvas
     else:
         by_band_for_heights: dict[str, list] = {}
@@ -1103,22 +1413,22 @@ def layout_pathway(
             required_w = max(required_w, row_w)
         canvas = (required_w, total_h)
 
-    bands = _compute_bands(compartments, canvas, origin, band_heights=per_band_heights)
-    positions = _graph_positions(
-        figure, bands, location_map, canvas, origin,
-        padding=float(params["pathway_band_padding"]),
-        seed=int(params["pathway_seed"]),
-        max_per_row=int(params["pathway_max_per_row"]),
-        row_v_gap=float(params["pathway_row_v_gap"]),
-        entity_sizes=effective_bbox,
-        edge_margin=float(params["pathway_edge_margin"]),
-    )
+    if not ring_mode:
+        bands = _compute_bands(compartments, canvas, origin, band_heights=per_band_heights)
+        positions = _graph_positions(
+            figure, bands, location_map, canvas, origin,
+            padding=float(params["pathway_band_padding"]),
+            seed=int(params["pathway_seed"]),
+            max_per_row=int(params["pathway_max_per_row"]),
+            row_v_gap=float(params["pathway_row_v_gap"]),
+            entity_sizes=effective_bbox,
+            edge_margin=float(params["pathway_edge_margin"]),
+        )
 
     style_kwargs: dict = {"style_dict": style_dict} if style_dict is not None else {}
     cw, _ = canvas
     ox, _ = origin
     arrow_gap = float(params["pathway_arrow_gap"])
-    entity_by_id = {e.id: e for e in figure.entities}
 
     def _entry(
         primitive: Callable, args: tuple, kwargs: dict, ir_id: str | None = None
@@ -1130,7 +1440,8 @@ def layout_pathway(
     # Bands take the full merged params so band-visual overrides via
     # layout_params land here; entity/arrow primitives take only style_dict.
     # V2/L8: pass compartment_type + style_dict for organelle border decorations.
-    for c in compartments:
+    # LT1: ring layout draws no compartment band (the figure is compartment-free).
+    for c in compartments if not ring_mode else []:
         top, bottom = bands[c.id]
         band_kwargs: dict = {
             "params": params,
@@ -1173,7 +1484,18 @@ def layout_pathway(
             # is always present regardless of whether a style_dict was supplied.
             size = effective_bbox[e.type]
 
+        # Forward per-entity visual style (e.g. LT7's dna_break) into the
+        # primitive's style_dict, dropping the control keys consumed above
+        # (primitive override name, sublabel). Figure-level style is the base;
+        # the entity's own keys win.
+        entity_style = {
+            k: v for k, v in (e.style or {}).items()
+            if k not in ("primitive", "sublabel")
+        }
         entity_kwargs = {**style_kwargs, "size": size}
+        if entity_style:
+            base_style = entity_kwargs.get("style_dict") or {}
+            entity_kwargs["style_dict"] = {**base_style, **entity_style}
         entries.append(_entry(
             override_prim,
             (e.label, positions[e.id]),
@@ -1185,7 +1507,9 @@ def layout_pathway(
     # intervening entity in a distinct lane when not. Cross-band arrows keep
     # the inter-band corridor routing. Same-band routes are decided together
     # so overlapping arches can be assigned separate lanes.
-    same_band_routes = _route_same_band_arrows(
+    # LT1: ring arrows are straight chords between adjacent ring nodes — no
+    # arch routing (which is what produced the long over-arching closing edge).
+    same_band_routes = {} if ring_mode else _route_same_band_arrows(
         figure.relations, positions, entity_by_id, bands, location_map,
         effective_bbox, arrow_gap,
         clearance=float(params["pathway_arch_clearance"]),
@@ -1258,6 +1582,21 @@ def pathway_label_requests(
             "pathway_label_requests requires the entries list returned by "
             "layout_pathway(figure); arrow count does not match relations"
         )
+
+    # LT1: in ring mode, push edge labels radially outward from the ring centre
+    # so enzyme/reaction names sit outside the ring instead of inside it. The
+    # centre is the mean of the entity centres (exact for an evenly-spaced ring).
+    ring_mode = _ring_order(figure) is not None
+    ring_center: tuple[float, float] | None = None
+    if ring_mode:
+        _ent_prims = frozenset(PRIMITIVE_REGISTRY.values())
+        ent_pts = [e.args[1] for e in entries if e.primitive in _ent_prims]
+        if ent_pts:
+            ring_center = (
+                sum(p[0] for p in ent_pts) / len(ent_pts),
+                sum(p[1] for p in ent_pts) / len(ent_pts),
+            )
+
     requests: list[LabelRequest] = []
     for relation, arrow in zip(figure.relations, arrow_entries):
         text = relation.label
@@ -1265,21 +1604,40 @@ def pathway_label_requests(
             continue
         (sx, sy), (ex, ey) = arrow.args
         midpoint = ((sx + ex) / 2, (sy + ey) / 2)
-        # Place the label perpendicular to the arrow shaft so it doesn't
-        # render directly on top of the line. For a mostly-horizontal arrow
-        # try above/below first; for a mostly-vertical arrow try right/left
-        # first. The default priority ("right", "below", ...) would put a
-        # horizontal-arrow label at the same y as the arrow itself.
-        dx, dy = ex - sx, ey - sy
-        if abs(dx) >= abs(dy):
-            priority = ("above", "below", "right", "left", "center")
+        anchor = midpoint
+
+        if ring_center is not None:
+            # Radial outward direction from ring centre through the chord
+            # midpoint; bias the label off the ring and try the outward
+            # side first.
+            rx, ry = midpoint[0] - ring_center[0], midpoint[1] - ring_center[1]
+            norm = math.hypot(rx, ry) or 1.0
+            ux, uy = rx / norm, ry / norm
+            anchor = (midpoint[0] + ux * 14.0, midpoint[1] + uy * 14.0)
+            if abs(ux) >= abs(uy):
+                priority = (("right", "above", "below", "left", "center")
+                            if ux > 0 else
+                            ("left", "above", "below", "right", "center"))
+            else:
+                priority = (("below", "right", "left", "above", "center")
+                            if uy > 0 else
+                            ("above", "right", "left", "below", "center"))
         else:
-            priority = ("right", "left", "above", "below", "center")
+            # Place the label perpendicular to the arrow shaft so it doesn't
+            # render directly on top of the line. For a mostly-horizontal arrow
+            # try above/below first; for a mostly-vertical arrow try right/left
+            # first. The default priority ("right", "below", ...) would put a
+            # horizontal-arrow label at the same y as the arrow itself.
+            dx, dy = ex - sx, ey - sy
+            if abs(dx) >= abs(dy):
+                priority = ("above", "below", "right", "left", "center")
+            else:
+                priority = ("right", "left", "above", "below", "center")
         # Anchor is a notional point on the arrow shaft; small bbox so
         # label_placement's gap dominates spacing.
         requests.append(LabelRequest(
             text=text,
-            anchor=midpoint,
+            anchor=anchor,
             anchor_size=(2.0, 2.0),
             priority=priority,
             ir_id=relation.ir_id,
