@@ -927,3 +927,32 @@ def test_feedback_arc_dag_identity_on_dag():
     acyclic = nx.DiGraph([("a", "b"), ("b", "c")])
     result = _feedback_arc_dag(acyclic)
     assert result is acyclic  # same object — no copy
+
+
+# ---------------------------------------------------------------------------
+# LABEL_FIT rung 4: an unfittable entity label is placed outside on a leader
+# ---------------------------------------------------------------------------
+
+def test_unfittable_entity_label_emits_external_request():
+    """A label that overflows even at the font floor gets an `_extlabel`
+    LabelRequest; a label that fits in its box does not."""
+    from imageGen.layout.pathway_layout import pathway_label_requests
+
+    fig = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="big", type=EntityType.PROTEIN,
+                   label="Supercalifragilisticexpialidocious"),
+            Entity(id="ok", type=EntityType.PROTEIN, label="ATP"),
+        ],
+        relations=[],
+        compartments=[],
+    )
+    entries = layout_pathway(fig)
+    reqs = pathway_label_requests(fig, entries)
+    ext_ids = {r.ir_id for r in reqs if r.ir_id and r.ir_id.endswith("_extlabel")}
+    assert "big_extlabel" in ext_ids
+    assert "ok_extlabel" not in ext_ids
+    # The external request carries the full, untruncated label text.
+    big_req = next(r for r in reqs if r.ir_id == "big_extlabel")
+    assert big_req.text == "Supercalifragilisticexpialidocious"

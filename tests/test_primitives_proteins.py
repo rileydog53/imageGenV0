@@ -148,3 +148,65 @@ def test_proteinsrender_group_to_png():
         out = render_group_to_png(group, filename, canvas=canvas)
         assert out.exists(), f"PNG not written: {out}"
         assert out.stat().st_size > 100, f"PNG suspiciously small: {out}"
+
+
+# ---------------------------------------------------------------------------
+# Label fitting (LABEL_FIT) — entity labels never overflow their box
+# ---------------------------------------------------------------------------
+
+def _text_attr(group: svgwrite.container.Group, attr: str) -> str | None:
+    """Return ``attr`` of the first <text> in the group's serialized XML."""
+    import re
+    xml = group.tostring()
+    m = re.search(r"<text\b[^>]*\b" + re.escape(attr) + r'="([^"]*)"', xml)
+    return m.group(1) if m else None
+
+
+def test_short_label_renders_single_base_font_text():
+    # A label that fits is byte-for-byte the pre-fit centered label.
+    g = generic_protein("ATP", (100, 70))
+    xml = g.tostring()
+    assert "<tspan" not in xml
+    assert _text_attr(g, "font-size") == str(float(DEFAULT_STYLE["label_font_size"]))
+
+
+def test_long_label_shrinks_to_fit_default_box():
+    # "Oxaloacetate" overflows a 60px box at 11px → shrunk single line.
+    g = generic_protein("Oxaloacetate", (100, 70), size=(60, 30))
+    xml = g.tostring()
+    assert "Oxaloacetate" in xml
+    assert "<tspan" not in xml
+    fs = float(_text_attr(g, "font-size"))
+    assert fs < float(DEFAULT_STYLE["label_font_size"])
+    assert fs >= 7.0  # the shrink floor, above the legibility minimum
+
+
+def test_long_hyphenated_label_wraps_to_two_lines():
+    g = generic_protein("alpha-Ketoglutarate", (100, 70), size=(60, 30))
+    xml = g.tostring()
+    assert xml.count("<tspan") == 2
+
+
+def test_pathological_label_renders_empty_box_for_external_placement():
+    # Rung 4: even the floor font overflows → no in-box <text>; the layout
+    # engine places the label outside on a leader.
+    g = generic_protein("Supercalifragilisticexpialidocious", (100, 70), size=(60, 30))
+    xml = g.tostring()
+    assert "<text" not in xml and "<tspan" not in xml
+    assert "<rect" in xml  # the box itself still renders
+
+
+def test_kinase_long_label_fits_inside_hexagon():
+    g = kinase("Target Kinase", (100, 70), size=(70, 32))
+    xml = g.tostring()
+    assert "Target Kinase" in xml or xml.count("<tspan") == 2
+    # 'P' badge absent (not phosphorylated), so the only text is the label.
+    fs = float(_text_attr(g, "font-size"))
+    assert fs <= float(DEFAULT_STYLE["label_font_size"])
+
+
+def test_protein_complex_long_label_fits():
+    g = protein_complex("IκB·NF-κB", (100, 70), size=(72, 38))
+    xml = g.tostring()
+    assert "NF-κB" in xml  # label still present, just fitted
+    assert "<text" in xml or "<tspan" in xml

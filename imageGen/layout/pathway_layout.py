@@ -81,8 +81,8 @@ from imageGen.layout._geom import (
 )
 from imageGen.layout._layered import order_within_ranks, rank_nodes, tighten_ranks
 from imageGen.layout.types import LayoutEntry
-from imageGen.primitives import arrows
-from imageGen.primitives._text import centered_label as _centered_label
+from imageGen.primitives import arrows, proteins
+from imageGen.primitives._text import centered_label as _centered_label, fit_label
 
 
 # ---------------------------------------------------------------------------
@@ -1664,6 +1664,29 @@ def pathway_label_requests(
             anchor_size=size,
             priority=("below", "above", "right", "left", "center"),
             ir_id=f"{entity.id}_sublabel",
+        ))
+
+    # LABEL_FIT rung 4: a fit-aware entity whose label can't fit even at the
+    # font floor renders an empty box (see proteins.FIT_AWARE_PRIMITIVES). The
+    # primitive and this walk both call _text.fit_label with the same box size
+    # and style, so they agree on which entities are external; here we re-place
+    # the full label just outside the box via the standard placement machinery.
+    for entity in figure.entities:
+        entry = entity_entry_by_id.get(entity.id)
+        if entry is None or entry.primitive not in proteins.FIT_AWARE_PRIMITIVES:
+            continue
+        cx, cy = entry.args[1]
+        size = entry.kwargs.get("size", ENTITY_BBOX.get(entity.type, (60.0, 30.0)))
+        style = entry.kwargs.get("style_dict") or proteins.DEFAULT_STYLE
+        fit = fit_label(entity.label, size[0], size[1], style)
+        if not fit.external:
+            continue
+        requests.append(LabelRequest(
+            text=entity.label,
+            anchor=(cx, cy),
+            anchor_size=size,
+            priority=("below", "above", "right", "left", "center"),
+            ir_id=f"{entity.id}_extlabel",
         ))
 
     return requests
