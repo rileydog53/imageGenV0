@@ -11,9 +11,160 @@ this single entry point so a preset change propagates everywhere.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 import svgwrite.text
+
+
+# ---------------------------------------------------------------------------
+# Label-fit estimation (LABEL_FIT plan)
+#
+# Entity boxes are a fixed size per type (ENTITY_BBOX) and labels were rendered
+# dead-center with no measurement, so any label longer than the box spilled past
+# its border. These helpers give primitives a pragmatic way to fit text to the
+# box: estimate the rendered width, then escalate through a fixed ladder
+# (fit-as-is → wrap to 2 lines → shrink font → external label).
+#
+# There is no font-metric library at this stage (svgwrite has no measurement
+# API), so width is approximated as ``n_chars * font_size * AVG_CHAR_RATIO``.
+# The estimator is monotonic in both inputs; it is deliberately a hair generous
+# so we under-fill rather than overflow.
+# ---------------------------------------------------------------------------
+
+AVG_CHAR_RATIO = 0.55     # em/char for the sans default (matches the plan)
+# Smallest shrink size. Set to 7 (not 8) so a long single-break metabolite like
+# "a-Ketoglutarate" (15 chars; only break is "a-"/"Ketoglutarate", 13 chars)
+# still wraps to fit a 60px box at rung 3 instead of escalating to an external
+# leader — keeping rung 4 rare per the plan. Stays above the 6px legibility floor.
+FONT_FLOOR = 7.0
+INNER_PAD = 4.0           # px — padding inside the box on each side
+LINE_HEIGHT_RATIO = 1.15  # multiple of font size between stacked tspan baselines
+_BREAK_CHARS = " /-"      # natural wrap points: space, slash, hyphen
+
+
+@dataclass(frozen=True)
+class FitResult:
+    """Outcome of fitting a label to a box.
+
+    Attributes:
+        lines:     The text split into render lines (1 line = no wrap).
+        font_size: The font size (px) the lines should render at.
+        external:  True when even the floor font overflows — the caller
+                   should render the box without the label and place the
+                   full text outside on a leader (rung 4).
+    """
+    lines: list[str]
+    font_size: float
+    external: bool
+
+
+def estimate_text_width(text: str, font_size: float) -> float:
+    """Estimate the rendered width (px) of ``text`` at ``font_size``.
+
+    ``n_chars * font_size * AVG_CHAR_RATIO``. Used only to choose a fit rung;
+    Phase 6 ``legibility_check`` validates the final output independently.
+    """
+    return max(1, len(text)) * font_size * AVG_CHAR_RATIO
+
+
+def _best_two_line_split(label: str) -> Optional[tuple[str, str]]:
+    """Split ``label`` into two balanced lines at the most central break point.
+
+    Breaks on space, ``/`` or ``-``. A space is consumed (dropped); ``/`` and
+    ``-`` stay on the first line so "Succinyl-CoA" → "Succinyl-" / "CoA" and a
+    fragment is never orphaned from its delimiter. Returns the split whose two
+    lines are most balanced (smallest longer side), or None when there is no
+    usable break.
+    """
+    candidates: list[tuple[str, str]] = []
+    for i, ch in enumerate(label):
+        if ch not in _BREAK_CHARS:
+            continue
+        if ch == " ":
+            a, b = label[:i].rstrip(), label[i + 1:].lstrip()
+        else:  # keep the delimiter on the first line
+            a, b = label[:i + 1], label[i + 1:]
+        if a and b:
+            candidates.append((a, b))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda ab: max(len(ab[0]), len(ab[1])))
+
+
+def fit_label(
+    label: str,
+    box_w: float,
+    box_h: float,
+    style: dict,
+    *,
+    pad: float = INNER_PAD,
+    floor: float = FONT_FLOOR,
+) -> FitResult:
+    """Fit ``label`` inside a ``box_w`` × ``box_h`` box via the escalation ladder.
+
+    Rungs, in order, returning the first that fits:
+      0. Fits as-is at the base font → single centered line.
+      1. Wrap to 2 lines at a natural break → both lines fit width and the
+         stacked height fits the box.
+      2. Shrink the single line toward ``floor`` until it fits the width.
+      3. Shrink the 2-line wrap toward ``floor`` until both lines + stacked
+         height fit.
+      4. None of the above → ``external=True`` (caller renders a leader label).
+
+    Args:
+        label:  The entity label text.
+        box_w:  Box width in px.
+        box_h:  Box height in px.
+        style:  Merged style dict; ``label_font_size`` is the base size.
+        pad:    Inner padding per side (default ``INNER_PAD``).
+        floor:  Smallest shrink font (default ``FONT_FLOOR``).
+
+    Returns:
+        A ``FitResult``. Width comparisons use ``estimate_text_width``.
+    """
+    base = float(style.get("label_font_size", 11))
+    inner_w = max(box_w - 2 * pad, 1.0)
+    inner_h = max(box_h - 2 * pad, 1.0)
+
+    def fits_w(text: str, fs: float) -> bool:
+        return estimate_text_width(text, fs) <= inner_w
+
+    def stack_fits_h(fs: float) -> bool:
+        return 2 * fs * LINE_HEIGHT_RATIO <= inner_h
+
+    # Rung 0 — fits as-is.
+    if fits_w(label, base):
+        return FitResult([label], base, False)
+
+    split = _best_two_line_split(label)
+
+    # Rung 1 — wrap to 2 lines at the base font.
+    if split is not None and stack_fits_h(base):
+        a, b = split
+        if fits_w(a, base) and fits_w(b, base):
+            return FitResult([a, b], base, False)
+
+    # Rung 2 — shrink the single line toward the floor.
+    fs = base
+    while fs > floor:
+        fs = max(floor, fs - 1.0)
+        if fits_w(label, fs):
+            return FitResult([label], fs, False)
+
+    # Rung 3 — shrink the 2-line wrap toward the floor.
+    if split is not None:
+        a, b = split
+        fs = base
+        while fs >= floor:
+            if stack_fits_h(fs) and fits_w(a, fs) and fits_w(b, fs):
+                return FitResult([a, b], fs, False)
+            if fs == floor:
+                break
+            fs = max(floor, fs - 1.0)
+
+    # Rung 4 — external label on a leader.
+    return FitResult([label], floor, True)
 
 
 def centered_label(
@@ -54,3 +205,82 @@ def centered_label(
     if weight != "normal":
         t["font-weight"] = weight
     return t
+
+
+def multiline_label(
+    lines: list[str],
+    cx: float,
+    cy: float,
+    style: dict,
+    *,
+    weight: str = "normal",
+    color: Optional[str] = None,
+    size_override: Optional[float] = None,
+) -> svgwrite.text.Text:
+    """Build a centered multi-line label as stacked ``<tspan>`` rows.
+
+    Each line is one ``<tspan>`` re-anchored at ``cx`` (so every row centers
+    independently) and offset vertically so the whole block is centered on
+    ``cy``. With a single line this is equivalent to ``centered_label`` but
+    via a tspan; callers that want byte-identical single-line output should
+    use ``label_for_fit`` which delegates to ``centered_label`` for one line.
+
+    Args:
+        lines:         The text rows, top to bottom.
+        cx, cy:        Centre-point of the stacked block.
+        style:         Merged style dict; same keys as ``centered_label``.
+        weight:        CSS ``font-weight``; omitted when ``"normal"``.
+        color:         Fill override; defaults to ``style["label_font_color"]``.
+        size_override: Font-size override in px; defaults to the style size.
+    """
+    fs = float(size_override or style["label_font_size"])
+    line_h = fs * LINE_HEIGHT_RATIO
+    n = len(lines)
+    t = svgwrite.text.Text(
+        "",
+        insert=(cx, cy),
+        font_family=style["label_font_family"],
+        font_size=fs,
+        fill=color or style["label_font_color"],
+    )
+    t["text-anchor"] = "middle"
+    t["dominant-baseline"] = "central"
+    if weight != "normal":
+        t["font-weight"] = weight
+    first_dy = -(n - 1) / 2.0 * line_h
+    for i, line in enumerate(lines):
+        dy = first_dy if i == 0 else line_h
+        t.add(svgwrite.text.TSpan(line, x=[cx], dy=[dy]))
+    return t
+
+
+def label_for_fit(
+    fit: FitResult,
+    cx: float,
+    cy: float,
+    style: dict,
+    *,
+    weight: str = "normal",
+    color: Optional[str] = None,
+) -> svgwrite.text.Text:
+    """Render a ``FitResult`` as a centered label at (``cx``, ``cy``).
+
+    A single line at the base font produces the exact ``centered_label``
+    element the engine emitted before label-fitting existed, so unaffected
+    entities stay byte-identical (golden-image safe). A shrunk single line
+    passes the reduced size through; multiple lines render as stacked tspans.
+
+    Callers must check ``fit.external`` first — an external result carries no
+    in-box text and should not be passed here.
+    """
+    base = float(style.get("label_font_size", 11))
+    if len(fit.lines) == 1:
+        override = None if fit.font_size == base else fit.font_size
+        return centered_label(
+            fit.lines[0], cx, cy, style,
+            weight=weight, color=color, size_override=override,
+        )
+    return multiline_label(
+        fit.lines, cx, cy, style,
+        weight=weight, color=color, size_override=fit.font_size,
+    )

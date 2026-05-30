@@ -37,7 +37,11 @@ import svgwrite.path
 import svgwrite.shapes
 import svgwrite.text
 
-from imageGen.primitives._text import centered_label as _centered_label  # noqa: F401
+from imageGen.primitives._text import (  # noqa: F401
+    centered_label as _centered_label,
+    fit_label as _fit_label,
+    label_for_fit as _label_for_fit,
+)
 
 DEFAULT_STYLE: dict = {
     # Generic protein (rounded rectangle)
@@ -135,7 +139,12 @@ def generic_protein(
     )
     rect["stroke-width"] = float(s["protein_stroke_width"])
     g.add(rect)
-    g.add(_centered_label(label, cx, cy, s))
+    # Fit the label to the box (LABEL_FIT): wrap / shrink so it never spills
+    # past the border. An external (rung-4) fit renders the box empty — the
+    # layout engine places the full label outside on a leader.
+    fit = _fit_label(label, w, h, s)
+    if not fit.external:
+        g.add(_label_for_fit(fit, cx, cy, s))
     return g
 
 
@@ -189,7 +198,10 @@ def protein_complex(
         )
         rect["stroke-width"] = sw
         g.add(rect)
-    g.add(_centered_label(label, cx, cy, s))
+    # Label is centered over the union of both subunits; fit it to the full box.
+    fit = _fit_label(label, w, h, s)
+    if not fit.external:
+        g.add(_label_for_fit(fit, cx, cy, s))
     return g
 
 
@@ -242,7 +254,11 @@ def kinase(
     )
     hexagon["stroke-width"] = sw
     g.add(hexagon)
-    g.add(_centered_label(label, cx, cy, s))
+    # Fit the label to the hex bbox; the text centers at cy where the hexagon
+    # is at full width, so measuring against (w, h) is a fair approximation.
+    fit = _fit_label(label, w, h, s)
+    if not fit.external:
+        g.add(_label_for_fit(fit, cx, cy, s))
 
     if phosphorylated:
         badge_r = max(7.0, h * 0.3)
@@ -522,3 +538,14 @@ def transcription_factor(
         g.add(dbd)
 
     return g
+
+
+# Primitives that fit their in-box label via ``_text.fit_label`` and therefore
+# render an empty box when the fit escalates to rung 4 (external). The layout
+# engine consults this set to decide which entities need an off-box leader
+# label placed for them (see ``pathway_layout.pathway_label_requests``).
+FIT_AWARE_PRIMITIVES: frozenset = frozenset({
+    generic_protein,
+    protein_complex,
+    kinase,
+})
