@@ -62,6 +62,7 @@ from imageGen.layout.pathway_layout import (
     _PATHWAY_COMPATIBLE_ARCHETYPES,
     compute_pathway_canvas,
     layout_pathway,
+    pathway_extlabel_leaders,
     pathway_label_requests,
 )
 from imageGen.layout.reaction_layout import (
@@ -185,6 +186,9 @@ def render_figure(
                     canvas=computed_canvas,
                     strict_labels=strict_labels,
                 )
+                # Bug 5: connect any externalized (rung-4) entity label back to
+                # its empty box with a dashed leader (no-op when none exist).
+                entries = pathway_extlabel_leaders(entries, style_dict)
 
     if _needs_watermark(ir):
         entries = _inject_watermark(entries, ir, style_dict)
@@ -400,6 +404,10 @@ def _place_labels_per_panel(
             bucket, requests, style_dict=effective_style,
             canvas=cell_bounds.get(panel.id, canvas), strict_labels=strict_labels,
         )
+        # Bug 5: insert leader lines for externalized labels before stamping
+        # panel offsets. Leaders land between bucket and label entries, so the
+        # slice below keeps them grouped with the labels for re-stamping.
+        placed = pathway_extlabel_leaders(placed, effective_style)
         result.extend(placed[:len(bucket)])
         for label_entry in placed[len(bucket):]:
             result.append(label_entry._replace(

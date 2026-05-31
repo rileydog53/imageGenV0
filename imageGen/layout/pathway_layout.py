@@ -1639,7 +1639,16 @@ def pathway_label_requests(
                 sum(p[1] for p in ent_pts) / len(ent_pts),
             )
 
-    requests: list[LabelRequest] = []
+    # Bug 5: entity-anchored labels (external rung-4 labels + sublabels) are
+    # collected separately from relation labels so they can be submitted to
+    # place_labels FIRST. A relation label can roam the whole canvas, but an
+    # external entity label has only one sensible home — beside its own box.
+    # Submitting it first lets it claim that slot before a relation label takes
+    # it (which is what made "Fluorescence-activated cell sorting" land on top
+    # of "load onto sorter" in stress3).
+    relation_requests: list[LabelRequest] = []
+    sublabel_requests: list[LabelRequest] = []
+    extlabel_requests: list[LabelRequest] = []
     for relation, arrow in zip(figure.relations, arrow_entries):
         text = relation.label
         if not text:
@@ -1677,7 +1686,7 @@ def pathway_label_requests(
                 priority = ("right", "left", "above", "below", "center")
         # Anchor is a notional point on the arrow shaft; small bbox so
         # label_placement's gap dominates spacing.
-        requests.append(LabelRequest(
+        relation_requests.append(LabelRequest(
             text=text,
             anchor=anchor,
             anchor_size=(2.0, 2.0),
@@ -1700,7 +1709,7 @@ def pathway_label_requests(
             continue
         cx, cy = entry.args[1]
         size = entry.kwargs.get("size", ENTITY_BBOX.get(entity.type, (60.0, 30.0)))
-        requests.append(LabelRequest(
+        sublabel_requests.append(LabelRequest(
             text=sublabel,
             anchor=(cx, cy),
             anchor_size=size,
@@ -1723,7 +1732,7 @@ def pathway_label_requests(
         fit = fit_label(entity.label, size[0], size[1], style)
         if not fit.external:
             continue
-        requests.append(LabelRequest(
+        extlabel_requests.append(LabelRequest(
             text=entity.label,
             anchor=(cx, cy),
             anchor_size=size,
@@ -1731,4 +1740,106 @@ def pathway_label_requests(
             ir_id=f"{entity.id}_extlabel",
         ))
 
-    return requests
+    # External entity labels first (claim their box-adjacent slot), then
+    # relation labels (free to roam), then sublabels.
+    return extlabel_requests + relation_requests + sublabel_requests
+
+
+# ---------------------------------------------------------------------------
+# Bug 5: leader lines for externalized (rung-4) entity labels.
+# A fit-aware entity whose label can't fit even at the font floor renders an
+# empty box; its label is re-placed outside the box by place_labels. Without a
+# connector, the floating text reads as unrelated to the box. After placement
+# we walk the entries, pair each placed `_extlabel` with its entity box, and
+# draw a thin dashed edge-to-edge connector.
+# ---------------------------------------------------------------------------
+
+_LEADER_DASH = "3,2"            # dash pattern for the external-label connector
+_LEADER_STROKE_WIDTH = 0.5      # px — deliberately hairline so it never competes
+
+
+def _leader_line(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """A hairline dashed connector from an external label to its entity box."""
+    s = {**proteins.DEFAULT_STYLE, **(style_dict or {})}
+    color = s.get("label_font_color", "#1A1A1A")
+    g = svgwrite.container.Group()
+    line = svgwrite.shapes.Line(start=start, end=end, stroke=color)
+    line["stroke-width"] = _LEADER_STROKE_WIDTH
+    line["stroke-dasharray"] = _LEADER_DASH
+    g.add(line)
+    return g
+
+
+def pathway_extlabel_leaders(
+    entries: list[LayoutEntry],
+    style_dict: dict | None = None,
+) -> list[LayoutEntry]:
+    """Insert a dashed leader line for every externalized entity label.
+
+    Operates on the post-`place_labels` entry list. Returns the entries with
+    leader-line LayoutEntry items inserted immediately before the first placed
+    label (so leaders draw over entity boxes but under label text). A no-op
+    (returns the input unchanged) when no `_extlabel` labels are present, so it
+    is safe to call for every archetype.
+
+    The split point — the index of the first label entry — equals the count of
+    pre-label entries, so a caller that slices ``result[:n]`` / ``result[n:]``
+    (e.g. the per-panel label path) keeps leaders grouped with the labels.
+    """
+    from imageGen.layout.label_placement import (  # noqa: PLC0415 — break cycle
+        _DEFAULT_LABEL_STYLE,
+        _estimate_text_bbox,
+        _label_primitive,
+    )
+
+    ent_prims = frozenset(PRIMITIVE_REGISTRY.values())
+    entity_geom: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {}
+    for e in entries:
+        if e.primitive in ent_prims and e.ir_id is not None and len(e.args) >= 2:
+            size = e.kwargs.get("size", (60.0, 30.0))
+            entity_geom[e.ir_id] = (e.args[1], size)
+
+    leaders: list[LayoutEntry] = []
+    first_label_idx = len(entries)
+    for i, e in enumerate(entries):
+        if e.primitive is not _label_primitive:
+            continue
+        first_label_idx = min(first_label_idx, i)
+        ir_id = e.ir_id or ""
+        if not (ir_id.startswith("label_") and ir_id.endswith("_extlabel")):
+            continue
+        entity_id = ir_id[len("label_"):-len("_extlabel")]
+        geom = entity_geom.get(entity_id)
+        if geom is None:
+            continue
+        box_center, box_size = geom
+        label_center = e.args[1]
+        text = e.args[0]
+        font_size = float(
+            (e.kwargs.get("style_dict") or _DEFAULT_LABEL_STYLE)["label_font_size"]
+        )
+        lw, lh = _estimate_text_bbox(str(text), font_size)
+        # Edge-to-edge: exit the label bbox toward the box, and the box bbox
+        # toward the label, so the connector touches both perimeters cleanly
+        # without crossing the text or the box fill.
+        label_exit = _bbox_exit_point(
+            label_center, lw / 2, lh / 2, box_center, 0.0
+        )
+        box_exit = _bbox_exit_point(
+            box_center, box_size[0] / 2, box_size[1] / 2, label_center, 0.0
+        )
+        leaders.append(LayoutEntry(
+            primitive=_leader_line,
+            args=(label_exit, box_exit),
+            kwargs={"style_dict": style_dict} if style_dict else {},
+            position=(0.0, 0.0),
+            ir_id=f"leader_{entity_id}",
+        ))
+
+    if not leaders:
+        return entries
+    return entries[:first_label_idx] + leaders + entries[first_label_idx:]
