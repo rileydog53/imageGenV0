@@ -9,15 +9,34 @@ straight through the label text.  This file pins the corrected behaviour:
      covering the label text area.
   2. _arrow_bbox_for_entity() inflates the effective width for receptor entities.
   3. _arrow_endpoints() routes the endpoint past the label when source is a receptor.
+
+Bug 3 canvas-side tail: a receptor placed flush-left had its left-anchored label
+clipped at the canvas origin (e.g. "INSR" rendering as "NSR").  _graph_positions
+now reserves the label overhang in the left clamp bound, so the leftmost
+receptor's label x-extent stays on-canvas (x >= 0).
 """
 from __future__ import annotations
 
 import pytest
 
 from imageGen.layout._geom import ENTITY_BBOX
-from imageGen.ir.schema import EntityType
+from imageGen.ir.schema import (
+    Archetype,
+    Compartment,
+    CompartmentType,
+    Entity,
+    EntityType,
+    Figure,
+    Relation,
+    RelationType,
+)
 from imageGen.layout.label_placement import _entry_bbox
-from imageGen.layout.pathway_layout import _arrow_bbox_for_entity, _arrow_endpoints
+from imageGen.layout.pathway_layout import (
+    _arrow_bbox_for_entity,
+    _arrow_endpoints,
+    _left_label_extent,
+    layout_pathway,
+)
 from imageGen.layout.types import LayoutEntry
 from imageGen.primitives import proteins
 
@@ -152,3 +171,73 @@ def test_receptor_source_arrow_exits_past_body_left_edge():
     assert start[0] < body_left, (
         f"Arrow start x={start[0]:.1f} must be left of body edge {body_left:.1f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Bug 3 canvas-side tail: leftmost receptor label stays on-canvas
+# ---------------------------------------------------------------------------
+
+def _receptor_label_left_x(figure: Figure, receptor_id: str) -> float:
+    """Estimated left x of a receptor's left-anchored label after layout.
+
+    The receptor primitive draws its label at ``cx - ec_w/2 - gap`` with
+    ``text-anchor="end"``, so the leftmost text pixel is another ``label_w``
+    further left.  Mirror that estimate from the laid-out center.
+    """
+    entries = layout_pathway(figure)
+    entity = next(e for e in figure.entities if e.id == receptor_id)
+    entry = next(e for e in entries if e.ir_id == receptor_id)
+    cx = entry.args[1][0]
+    ec_w = ENTITY_BBOX[EntityType.RECEPTOR][0]
+    return cx - ec_w / 2 - _left_label_extent(entity)
+
+
+def test_layered_leftmost_receptor_label_on_canvas():
+    """Compartment-free layered DAG: rank-0 receptor label x stays >= 0."""
+    figure = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="insr", type=EntityType.RECEPTOR, label="INSR"),
+            Entity(id="irs1", type=EntityType.PROTEIN, label="IRS1"),
+            Entity(id="akt", type=EntityType.KINASE, label="AKT"),
+        ],
+        relations=[
+            Relation(source="insr", target="irs1", type=RelationType.ACTIVATES),
+            Relation(source="irs1", target="akt", type=RelationType.ACTIVATES),
+        ],
+    )
+    label_left = _receptor_label_left_x(figure, "insr")
+    assert label_left >= 0.0, f"label left x={label_left:.1f} is clipped (< 0)"
+
+
+def test_band_snap_leftmost_receptor_label_on_canvas():
+    """Membrane-band figure with the receptor pinned to the first column."""
+    figure = Figure(
+        archetype=Archetype.PATHWAY,
+        entities=[
+            Entity(id="insr", type=EntityType.RECEPTOR, label="INSR", location="m"),
+            Entity(id="egfr", type=EntityType.RECEPTOR, label="EGFR", location="m"),
+            Entity(id="akt", type=EntityType.KINASE, label="AKT", location="c"),
+        ],
+        compartments=[
+            Compartment(id="m", type=CompartmentType.MEMBRANE, label="Membrane"),
+            Compartment(id="c", type=CompartmentType.CYTOPLASM, label="Cytoplasm"),
+        ],
+        relations=[
+            Relation(source="insr", target="akt", type=RelationType.ACTIVATES),
+            Relation(source="egfr", target="akt", type=RelationType.ACTIVATES),
+        ],
+    )
+    for rid in ("insr", "egfr"):
+        label_left = _receptor_label_left_x(figure, rid)
+        assert label_left >= 0.0, (
+            f"{rid} label left x={label_left:.1f} is clipped (< 0)"
+        )
+
+
+def test_left_label_extent_zero_for_non_receptor():
+    """Only receptors carry a left-side label overhang."""
+    protein = _FakeEntity(EntityType.PROTEIN, "ERK")
+    receptor = _FakeEntity(EntityType.RECEPTOR, "INSR")
+    assert _left_label_extent(protein) == 0.0
+    assert _left_label_extent(receptor) > 0.0

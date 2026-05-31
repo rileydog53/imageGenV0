@@ -860,7 +860,11 @@ def _graph_positions(
                 # (their boxes were yanked inward until they collided, which in
                 # turn made the connecting arrow render backwards inside a box).
                 half_x = ew / 2
-                x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
+                # Bug 3 (canvas-side tail): a receptor's label sits LEFT of its
+                # body, so push the left bound in by that overhang to keep the
+                # label on-canvas when the receptor lands in the first column.
+                lo_x = ox + edge_margin + _left_label_extent(e)
+                x = _clamp_center_x(x, lo_x, ox + w - edge_margin, half_x)
                 k = layered_rank_size.get(rank, 1)
                 t = (layered_order.get(e.id, 0) + 0.5) / k
                 usable_top    = band_top    + edge_margin + eh / 2
@@ -885,7 +889,10 @@ def _graph_positions(
             # to the box or externalizes it (placed by the bounds-aware label
             # engine), so the old LT4 label-extent term only forced box overlap.
             half_x = ew / 2
-            x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
+            # Bug 3 (canvas-side tail): keep a left-edge receptor's left-anchored
+            # label on-canvas by reserving its overhang in the left clamp bound.
+            lo_x = ox + edge_margin + _left_label_extent(e)
+            x = _clamp_center_x(x, lo_x, ox + w - edge_margin, half_x)
 
             # Stack rows vertically, centered around the band center.
             y_offset = (row - (n_rows - 1) / 2) * (row_h + row_v_gap)
@@ -917,9 +924,24 @@ def _arrow_bbox_for_entity(
     if entity.type != EntityType.RECEPTOR:
         return base_bbox
     bw, bh = base_bbox
-    label_w = max(1, len(entity.label)) * _RECEPTOR_FONT_SIZE * 0.6
-    label_ext = _RECEPTOR_LABEL_GAP + label_w
+    label_ext = _left_label_extent(entity)
     return (bw + 2.0 * label_ext, bh)
+
+
+def _left_label_extent(entity) -> float:
+    """Px occupied LEFT of a receptor's body bbox by its left-anchored label.
+
+    The receptor primitive draws its label with ``text-anchor="end"`` at
+    ``cx - ec_w/2 - 6`` (see ``proteins.receptor``), so the label spills
+    ``gap + label_width`` past the body's left edge. Estimate that overhang
+    so placement can keep the label on-canvas (Bug 3 canvas-side tail). Mirror
+    the same width heuristic used by ``_arrow_bbox_for_entity``. Returns 0 for
+    non-receptor entities (no left-side label overhang).
+    """
+    if entity.type != EntityType.RECEPTOR:
+        return 0.0
+    label_w = max(1, len(entity.label)) * _RECEPTOR_FONT_SIZE * 0.6
+    return _RECEPTOR_LABEL_GAP + label_w
 
 
 def _bbox_exit_point(
