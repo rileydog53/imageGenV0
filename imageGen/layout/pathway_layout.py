@@ -852,9 +852,14 @@ def _graph_positions(
                     x = ox + padding + inner_w * rank / layered_max_rank
                 else:
                     x = ox + w / 2
-                # LT4: clamp by the label extent (not just the box) so a wide
-                # label can't spill past the canvas / panel-cell edge.
-                half_x = max(ew, _label_extent_w(e.label)) / 2
+                # Clamp by box width only. The label-fit ladder keeps a
+                # centered label inside the box (rungs 0-3) or externalizes it
+                # (rung 4, placed by the bounds-aware label engine), so the old
+                # LT4 centered-label-extent clamp is obsolete here — and it
+                # forced wide-label neighbours on adjacent ranks to overlap
+                # (their boxes were yanked inward until they collided, which in
+                # turn made the connecting arrow render backwards inside a box).
+                half_x = ew / 2
                 x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
                 k = layered_rank_size.get(rank, 1)
                 t = (layered_order.get(e.id, 0) + 0.5) / k
@@ -875,9 +880,11 @@ def _graph_positions(
                 x = ox + w / 2
             else:
                 x = ox + padding + inner_w * col / (cols_in_row - 1)
-            # L15 + LT4: clamp centers so the entity box *and its label* stay
-            # inside the canvas (a wide label otherwise spills past the edge).
-            half_x = max(ew, _label_extent_w(e.label)) / 2
+            # L15: clamp centers so the entity *box* stays inside the canvas.
+            # The label is no longer part of this clamp: the fit ladder fits it
+            # to the box or externalizes it (placed by the bounds-aware label
+            # engine), so the old LT4 label-extent term only forced box overlap.
+            half_x = ew / 2
             x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
 
             # Stack rows vertically, centered around the band center.
