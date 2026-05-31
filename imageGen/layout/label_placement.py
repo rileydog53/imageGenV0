@@ -323,6 +323,16 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     label_w, label_h = _estimate_text_bbox(
         str(label), float(_DEFAULT_LABEL_STYLE["label_font_size"])
     )
+    # Receptor places its label LEFT of the body (text-anchor: end, 6 px gap).
+    # Extend the collision bbox leftward only so arrows don't route through it.
+    if entry.primitive is proteins.receptor:
+        _RECEPTOR_LABEL_GAP = 6.0
+        return (
+            cx - w / 2 - _RECEPTOR_LABEL_GAP - label_w,
+            cy - h / 2,
+            cx + w / 2,
+            cy + h / 2,
+        )
     w = max(w, label_w)
     h = max(h, label_h)
     return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)

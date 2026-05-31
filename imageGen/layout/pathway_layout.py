@@ -898,6 +898,29 @@ def _graph_positions(
     return pos
 
 
+_RECEPTOR_LABEL_GAP = 6.0      # px — matches the hard-coded gap in receptor() primitive
+_RECEPTOR_FONT_SIZE = 11.0     # matches _DEFAULT_LABEL_STYLE in label_placement
+
+
+def _arrow_bbox_for_entity(
+    entity,
+    base_bbox: tuple[float, float],
+) -> tuple[float, float]:
+    """Effective (w, h) for arrow-endpoint routing.
+
+    For receptor entities the label sits LEFT of the body, outside the 28×60
+    body bbox.  Inflate the width symmetrically so _bbox_exit_point routes
+    the arrow past the label.  The right-side overshoot is harmless because
+    no receptor label sits on the right side.
+    """
+    if entity.type != EntityType.RECEPTOR:
+        return base_bbox
+    bw, bh = base_bbox
+    label_w = max(1, len(entity.label)) * _RECEPTOR_FONT_SIZE * 0.6
+    label_ext = _RECEPTOR_LABEL_GAP + label_w
+    return (bw + 2.0 * label_ext, bh)
+
+
 def _bbox_exit_point(
     center: tuple[float, float],
     half_w: float,
@@ -1053,8 +1076,8 @@ def _route_same_band_arrows(
         tgt = entity_by_id[r.target]
         s_center = positions[r.source]
         t_center = positions[r.target]
-        s_bbox = effective_bbox[src.type]
-        t_bbox = effective_bbox[tgt.type]
+        s_bbox = _arrow_bbox_for_entity(src, effective_bbox[src.type])
+        t_bbox = _arrow_bbox_for_entity(tgt, effective_bbox[tgt.type])
         start, end = _arrow_endpoints(s_center, s_bbox, t_center, t_bbox, gap)
 
         hit = False
@@ -1527,8 +1550,8 @@ def layout_pathway(
         src = entity_by_id[r.source]
         tgt = entity_by_id[r.target]
         start, end = _arrow_endpoints(
-            positions[r.source], effective_bbox[src.type],
-            positions[r.target], effective_bbox[tgt.type],
+            positions[r.source], _arrow_bbox_for_entity(src, effective_bbox[src.type]),
+            positions[r.target], _arrow_bbox_for_entity(tgt, effective_bbox[tgt.type]),
             arrow_gap,
         )
         if location_map[r.source] != location_map[r.target]:
