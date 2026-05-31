@@ -41,6 +41,7 @@ FONT_FLOOR = 7.0
 INNER_PAD = 4.0           # px — padding inside the box on each side
 LINE_HEIGHT_RATIO = 1.15  # multiple of font size between stacked tspan baselines
 _BREAK_CHARS = " /-"      # natural wrap points: space, slash, hyphen
+_MIN_FRAGMENT = 3         # Bug 6: avoid orphaning a <3-char wrap fragment ("a-")
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,13 @@ def _best_two_line_split(label: str) -> Optional[tuple[str, str]]:
     fragment is never orphaned from its delimiter. Returns the split whose two
     lines are most balanced (smallest longer side), or None when there is no
     usable break.
+
+    Bug 6: among the available breaks, prefer those that leave *both* fragments
+    at least ``_MIN_FRAGMENT`` chars, so a lopsided break like "a-Ketoglutarate"
+    → "a-" / "Ketoglutarate" is skipped when a more balanced break exists. When
+    every break is lopsided (e.g. the hyphen is the only break point), the guard
+    falls back to the full candidate set so the label still wraps rather than
+    escalating to an external leader.
     """
     candidates: list[tuple[str, str]] = []
     for i, ch in enumerate(label):
@@ -89,7 +97,12 @@ def _best_two_line_split(label: str) -> Optional[tuple[str, str]]:
             candidates.append((a, b))
     if not candidates:
         return None
-    return min(candidates, key=lambda ab: max(len(ab[0]), len(ab[1])))
+    balanced = [
+        ab for ab in candidates
+        if len(ab[0]) >= _MIN_FRAGMENT and len(ab[1]) >= _MIN_FRAGMENT
+    ]
+    pool = balanced or candidates
+    return min(pool, key=lambda ab: max(len(ab[0]), len(ab[1])))
 
 
 def fit_label(

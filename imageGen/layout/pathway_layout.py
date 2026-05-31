@@ -1585,6 +1585,60 @@ def layout_pathway(
     return entries
 
 
+# ---------------------------------------------------------------------------
+# Bug 6: ring edge-label decluttering knobs.
+# ---------------------------------------------------------------------------
+
+_RING_RADIAL_NUDGE = 24.0        # px — outward push of an edge label off the ring
+_RING_DIVERGE_THRESHOLD = 20.0   # px — pairs closer than this get fanned apart
+_RING_DIVERGE_PUSH = 12.0        # px — tangential push applied to each of the pair
+
+
+def _fan_apart_ring_labels(ring_label_data: list[tuple]) -> list[tuple]:
+    """Push co-located ring edge labels apart along their tangents.
+
+    Each item is ``(anchor, (ux, uy), priority, text, ir_id)`` where ``(ux, uy)``
+    is the outward radial unit vector at the label's anchor. When two labels'
+    anchors fall within ``_RING_DIVERGE_THRESHOLD`` px, each is shifted by
+    ``_RING_DIVERGE_PUSH`` px along its own tangent (perpendicular to its
+    radial), in the direction that increases their separation, so the pair fans
+    apart instead of stacking. Order is preserved; a label is pushed at most
+    once (by its nearest close neighbour). Returns a new list.
+    """
+    n = len(ring_label_data)
+    if n < 2:
+        return ring_label_data
+
+    anchors = [item[0] for item in ring_label_data]
+    out = list(ring_label_data)
+    for i in range(n):
+        ax, ay = anchors[i]
+        # Find the nearest other label within the divergence threshold.
+        nearest_j = -1
+        nearest_d = _RING_DIVERGE_THRESHOLD
+        for j in range(n):
+            if j == i:
+                continue
+            d = math.hypot(anchors[j][0] - ax, anchors[j][1] - ay)
+            if d < nearest_d:
+                nearest_d = d
+                nearest_j = j
+        if nearest_j < 0:
+            continue
+        # Tangent = perpendicular to this label's radial unit vector.
+        ux, uy = ring_label_data[i][1]
+        tx, ty = -uy, ux
+        # Push along the tangent in whichever direction moves away from the
+        # neighbour (positive dot with the neighbour→self vector).
+        away_x, away_y = ax - anchors[nearest_j][0], ay - anchors[nearest_j][1]
+        sign = 1.0 if (tx * away_x + ty * away_y) >= 0 else -1.0
+        new_anchor = (ax + tx * _RING_DIVERGE_PUSH * sign,
+                      ay + ty * _RING_DIVERGE_PUSH * sign)
+        item = out[i]
+        out[i] = (new_anchor, item[1], item[2], item[3], item[4])
+    return out
+
+
 def pathway_label_requests(
     figure: Figure,
     entries: list[LayoutEntry],
@@ -1649,6 +1703,10 @@ def pathway_label_requests(
     relation_requests: list[LabelRequest] = []
     sublabel_requests: list[LabelRequest] = []
     extlabel_requests: list[LabelRequest] = []
+    # Bug 6: ring edge labels are collected here (anchor, radial unit vector,
+    # priority, text, ir_id) and emitted after the loop so a divergence pass can
+    # fan apart any co-located pair before requests are built.
+    ring_label_data: list[tuple] = []
     for relation, arrow in zip(figure.relations, arrow_entries):
         text = relation.label
         if not text:
@@ -1660,11 +1718,14 @@ def pathway_label_requests(
         if ring_center is not None:
             # Radial outward direction from ring centre through the chord
             # midpoint; bias the label off the ring and try the outward
-            # side first.
+            # side first. Bug 6: nudge further out (was 14px) so edge labels
+            # clear their adjacent ring node instead of jamming against it
+            # (e.g. "SDH"/"SCS" beside "Succinate" at the bottom of the ring).
             rx, ry = midpoint[0] - ring_center[0], midpoint[1] - ring_center[1]
             norm = math.hypot(rx, ry) or 1.0
             ux, uy = rx / norm, ry / norm
-            anchor = (midpoint[0] + ux * 14.0, midpoint[1] + uy * 14.0)
+            anchor = (midpoint[0] + ux * _RING_RADIAL_NUDGE,
+                      midpoint[1] + uy * _RING_RADIAL_NUDGE)
             if abs(ux) >= abs(uy):
                 priority = (("right", "above", "below", "left", "center")
                             if ux > 0 else
@@ -1673,6 +1734,10 @@ def pathway_label_requests(
                 priority = (("below", "right", "left", "above", "center")
                             if uy > 0 else
                             ("above", "right", "left", "below", "center"))
+            ring_label_data.append(
+                (anchor, (ux, uy), priority, text, relation.ir_id)
+            )
+            continue
         else:
             # Place the label perpendicular to the arrow shaft so it doesn't
             # render directly on top of the line. For a mostly-horizontal arrow
@@ -1692,6 +1757,21 @@ def pathway_label_requests(
             anchor_size=(2.0, 2.0),
             priority=priority,
             ir_id=relation.ir_id,
+        ))
+
+    # Bug 6: ring edge labels were deferred above so co-located pairs can be
+    # fanned apart along the tangent before their requests are built. Two
+    # adjacent chords can share nearly the same radial angle (a tight ring),
+    # placing their outward-nudged anchors on top of each other; push each
+    # along its tangent away from the other so the labels diverge.
+    fanned = _fan_apart_ring_labels(ring_label_data)
+    for anchor, _radial, priority, text, ir_id in fanned:
+        relation_requests.append(LabelRequest(
+            text=text,
+            anchor=anchor,
+            anchor_size=(2.0, 2.0),
+            priority=priority,
+            ir_id=ir_id,
         ))
 
     # V2 / L5: entity sublabels — text anchored to entity bbox, placed below
