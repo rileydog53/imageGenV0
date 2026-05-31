@@ -234,32 +234,44 @@ def test_clamp_center_x_centers_when_footprint_wider_than_slot():
     assert _clamp_center_x(10.0, 0.0, 200.0, 120.0) == pytest.approx(100.0)
 
 
-def test_wide_label_entity_stays_within_narrow_canvas():
-    """LT4: an entity's label-extended footprint fits inside a narrow canvas.
+def test_wide_label_entity_box_stays_within_narrow_canvas():
+    """A wide-label entity's BOX stays inside a narrow canvas.
 
-    Reproduces the panel-cell condition (narrow width, wide label) at the
-    layout level: the entity center must sit far enough from the right edge
-    that its rendered label does not cross the canvas boundary.
+    The old LT4 behavior clamped the entity center by the *centered-label*
+    extent. That is retired: the fit ladder fits a label to its box or
+    externalizes it (placed by the bounds-aware label engine), so position is
+    clamped by box width only. We therefore assert the entity *box* (not its
+    label) stays within the canvas, and that the two entities do not overlap.
     """
-    from imageGen.layout.pathway_layout import _label_extent_w
+    from imageGen.ir.schema import (
+        Archetype, Entity, EntityType, Figure, Relation, RelationType,
+    )
+    from imageGen.layout._geom import ENTITY_BBOX
 
     fig = Figure(
-        archetype=Archetype.WORKFLOW,
-        title="t",
+        archetype=Archetype.PATHWAY,
         entities=[
-            Entity(id="a", type=EntityType.SAMPLE, label="A"),
-            Entity(id="b", type=EntityType.EQUIPMENT, label="Enzymatic digestion"),
+            Entity(id="enz", type=EntityType.METABOLITE, label="Enzymatic digestion"),
+            Entity(id="x", type=EntityType.METABOLITE, label="X"),
         ],
-        relations=[Relation(source="a", target="b", type=RelationType.GENERIC)],
+        relations=[
+            Relation(source="enz", target="x", type=RelationType.ACTIVATES),
+        ],
     )
-    canvas_w = 275.0
-    entries = layout_pathway(
-        fig, layout_params={"pathway_canvas": (canvas_w, 536.0)}
-    )
-    by_id = {e.ir_id: e for e in _entity_entries(entries)}
-    cx, _cy = by_id["b"].args[1]
-    half = _label_extent_w("Enzymatic digestion") / 2
-    assert cx + half <= canvas_w + 0.5  # label right edge stays in-canvas
+    canvas_w = 220.0
+    entries = layout_pathway(fig, layout_params={"pathway_canvas": (canvas_w, 200.0)})
+
+    centers = {
+        e.ir_id: e.args[1]
+        for e in _entity_entries(entries)
+    }
+    bw, _bh = ENTITY_BBOX[EntityType.METABOLITE]
+    for irid, (cx, _cy) in centers.items():
+        assert cx - bw / 2 >= 0.0, f"{irid} box crosses left canvas edge"
+        assert cx + bw / 2 <= canvas_w, f"{irid} box crosses right canvas edge"
+    # The two boxes must not overlap horizontally.
+    xs = sorted(cx for cx, _ in centers.values())
+    assert xs[1] - xs[0] >= bw, "entity boxes overlap"
 
 
 def test_entity_type_routes_to_specific_primitive():

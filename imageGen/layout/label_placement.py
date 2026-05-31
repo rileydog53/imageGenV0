@@ -220,6 +220,69 @@ def _overlaps(a: Bbox, b: Bbox, margin: float) -> bool:
 _ENTITY_PRIMITIVES: frozenset = frozenset(PRIMITIVE_REGISTRY.values())
 
 
+# ---------------------------------------------------------------------------
+# Bug 2 / shaft avoidance: relation labels must not render on an arrow shaft.
+# Arrow shafts are thin, so v1 treated them as zero-footprint (module
+# docstring). That let labels land directly on the line. We now reserve a thin
+# corridor along each shaft by sampling small boxes ALONG the polyline — not a
+# single bounding rectangle, which for a diagonal shaft would over-block the
+# whole rectangle between the two endpoints (e.g. a hub fan-out) and starve
+# legitimate corner slots.
+# ---------------------------------------------------------------------------
+
+_SHAFT_HALF_WIDTH = 5.0     # px — half-thickness of the no-label corridor
+_SHAFT_SAMPLE_STEP = 14.0   # px — spacing of sample boxes along the shaft
+
+# Memoised lazily to avoid the pathway_layout <-> label_placement import cycle.
+_ARROW_PRIMITIVES: frozenset | None = None
+
+
+def _arrow_primitive_set() -> frozenset:
+    """The set of arrow primitive callables, looked up once and cached."""
+    global _ARROW_PRIMITIVES
+    if _ARROW_PRIMITIVES is None:
+        from imageGen.layout.pathway_layout import (  # noqa: PLC0415
+            RELATION_TO_ARROW,
+        )
+        _ARROW_PRIMITIVES = frozenset(RELATION_TO_ARROW.values())
+    return _ARROW_PRIMITIVES
+
+
+def _arrow_polyline(entry: LayoutEntry) -> list[tuple[float, float]] | None:
+    """Return the shaft polyline for an arrow entry, else None.
+
+    An arrow entry's args are ``(start, end)``; an elbow/arch route carries the
+    full point list in ``kwargs['waypoints']`` (used when present so the
+    corridor follows the rendered bend rather than the straight chord).
+    """
+    if entry.primitive not in _arrow_primitive_set():
+        return None
+    wps = entry.kwargs.get("waypoints")
+    if wps:
+        return [tuple(p) for p in wps]
+    if len(entry.args) >= 2:
+        return [tuple(entry.args[0]), tuple(entry.args[1])]
+    return None
+
+
+def _shaft_bboxes(entry: LayoutEntry) -> list[Bbox]:
+    """Small collision boxes sampled along an arrow's shaft (empty for non-arrows)."""
+    pts = _arrow_polyline(entry)
+    if not pts or len(pts) < 2:
+        return []
+    hw = _SHAFT_HALF_WIDTH
+    boxes: list[Bbox] = []
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        seg_len = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+        n = max(1, int(seg_len // _SHAFT_SAMPLE_STEP))
+        for i in range(n + 1):
+            t = i / n
+            cx = x0 + t * (x1 - x0)
+            cy = y0 + t * (y1 - y0)
+            boxes.append((cx - hw, cy - hw, cx + hw, cy + hw))
+    return boxes
+
+
 def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     """Best-effort bbox extraction for a positioned LayoutEntry.
 
@@ -260,6 +323,16 @@ def _entry_bbox(entry: LayoutEntry) -> Bbox | None:
     label_w, label_h = _estimate_text_bbox(
         str(label), float(_DEFAULT_LABEL_STYLE["label_font_size"])
     )
+    # Receptor places its label LEFT of the body (text-anchor: end, 6 px gap).
+    # Extend the collision bbox leftward only so arrows don't route through it.
+    if entry.primitive is proteins.receptor:
+        _RECEPTOR_LABEL_GAP = 6.0
+        return (
+            cx - w / 2 - _RECEPTOR_LABEL_GAP - label_w,
+            cy - h / 2,
+            cx + w / 2,
+            cy + h / 2,
+        )
     w = max(w, label_w)
     h = max(h, label_h)
     return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
@@ -443,6 +516,11 @@ def place_labels(
     occupied: list[Bbox] = [
         bbox for bbox in (_entry_bbox(e) for e in entries) if bbox is not None
     ]
+    # Bug 2: reserve a thin corridor along every arrow shaft so relation
+    # labels are not placed directly on a line (arrows are otherwise
+    # zero-footprint to the placement engine).
+    for _e in entries:
+        occupied.extend(_shaft_bboxes(_e))
 
     out: list[LayoutEntry] = list(entries)
     failures: list[LabelRequest] = []

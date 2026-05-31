@@ -852,9 +852,14 @@ def _graph_positions(
                     x = ox + padding + inner_w * rank / layered_max_rank
                 else:
                     x = ox + w / 2
-                # LT4: clamp by the label extent (not just the box) so a wide
-                # label can't spill past the canvas / panel-cell edge.
-                half_x = max(ew, _label_extent_w(e.label)) / 2
+                # Clamp by box width only. The label-fit ladder keeps a
+                # centered label inside the box (rungs 0-3) or externalizes it
+                # (rung 4, placed by the bounds-aware label engine), so the old
+                # LT4 centered-label-extent clamp is obsolete here — and it
+                # forced wide-label neighbours on adjacent ranks to overlap
+                # (their boxes were yanked inward until they collided, which in
+                # turn made the connecting arrow render backwards inside a box).
+                half_x = ew / 2
                 x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
                 k = layered_rank_size.get(rank, 1)
                 t = (layered_order.get(e.id, 0) + 0.5) / k
@@ -875,9 +880,11 @@ def _graph_positions(
                 x = ox + w / 2
             else:
                 x = ox + padding + inner_w * col / (cols_in_row - 1)
-            # L15 + LT4: clamp centers so the entity box *and its label* stay
-            # inside the canvas (a wide label otherwise spills past the edge).
-            half_x = max(ew, _label_extent_w(e.label)) / 2
+            # L15: clamp centers so the entity *box* stays inside the canvas.
+            # The label is no longer part of this clamp: the fit ladder fits it
+            # to the box or externalizes it (placed by the bounds-aware label
+            # engine), so the old LT4 label-extent term only forced box overlap.
+            half_x = ew / 2
             x = _clamp_center_x(x, ox + edge_margin, ox + w - edge_margin, half_x)
 
             # Stack rows vertically, centered around the band center.
@@ -889,6 +896,30 @@ def _graph_positions(
             )
             pos[e.id] = (x, y)
     return pos
+
+
+_RECEPTOR_LABEL_GAP = 6.0      # px — matches the hard-coded gap in receptor() primitive
+_RECEPTOR_FONT_SIZE = 11.0     # matches _DEFAULT_LABEL_STYLE in label_placement
+_HIT_TEST_MARGIN = 8.0         # px — expanded half-extent for arch hit-test (Bug 4)
+
+
+def _arrow_bbox_for_entity(
+    entity,
+    base_bbox: tuple[float, float],
+) -> tuple[float, float]:
+    """Effective (w, h) for arrow-endpoint routing.
+
+    For receptor entities the label sits LEFT of the body, outside the 28×60
+    body bbox.  Inflate the width symmetrically so _bbox_exit_point routes
+    the arrow past the label.  The right-side overshoot is harmless because
+    no receptor label sits on the right side.
+    """
+    if entity.type != EntityType.RECEPTOR:
+        return base_bbox
+    bw, bh = base_bbox
+    label_w = max(1, len(entity.label)) * _RECEPTOR_FONT_SIZE * 0.6
+    label_ext = _RECEPTOR_LABEL_GAP + label_w
+    return (bw + 2.0 * label_ext, bh)
 
 
 def _bbox_exit_point(
@@ -1046,8 +1077,8 @@ def _route_same_band_arrows(
         tgt = entity_by_id[r.target]
         s_center = positions[r.source]
         t_center = positions[r.target]
-        s_bbox = effective_bbox[src.type]
-        t_bbox = effective_bbox[tgt.type]
+        s_bbox = _arrow_bbox_for_entity(src, effective_bbox[src.type])
+        t_bbox = _arrow_bbox_for_entity(tgt, effective_bbox[tgt.type])
         start, end = _arrow_endpoints(s_center, s_bbox, t_center, t_bbox, gap)
 
         hit = False
@@ -1056,7 +1087,18 @@ def _route_same_band_arrows(
                 continue
             ocx, ocy = positions[oid]
             ow, oh = effective_bbox[entity_by_id[oid].type]
-            if _segment_hits_rect(start, end, ocx, ocy, ow / 2, oh / 2):
+            # Bug 4: broaden the hit-test half-extents by _HIT_TEST_MARGIN so
+            # shafts that visually graze an entity bbox but miss it by a few px
+            # (due to vertical spread from the layered-DAG topo-y logic) still
+            # trigger an arch.  Also include the entity's label footprint: a
+            # shaft that passes through a long centered label arches even if it
+            # clears the body box.  The width estimate uses the same formula as
+            # label_placement._estimate_text_bbox so the two are consistent.
+            obs_label = entity_by_id[oid].label
+            obs_lw = max(1, len(obs_label)) * _RECEPTOR_FONT_SIZE * 0.6
+            hw = max(ow / 2, obs_lw / 2) + _HIT_TEST_MARGIN
+            hh = oh / 2 + _HIT_TEST_MARGIN
+            if _segment_hits_rect(start, end, ocx, ocy, hw, hh):
                 hit = True
                 break
 
@@ -1520,8 +1562,8 @@ def layout_pathway(
         src = entity_by_id[r.source]
         tgt = entity_by_id[r.target]
         start, end = _arrow_endpoints(
-            positions[r.source], effective_bbox[src.type],
-            positions[r.target], effective_bbox[tgt.type],
+            positions[r.source], _arrow_bbox_for_entity(src, effective_bbox[src.type]),
+            positions[r.target], _arrow_bbox_for_entity(tgt, effective_bbox[tgt.type]),
             arrow_gap,
         )
         if location_map[r.source] != location_map[r.target]:
@@ -1541,6 +1583,60 @@ def layout_pathway(
         ))
 
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Bug 6: ring edge-label decluttering knobs.
+# ---------------------------------------------------------------------------
+
+_RING_RADIAL_NUDGE = 24.0        # px — outward push of an edge label off the ring
+_RING_DIVERGE_THRESHOLD = 20.0   # px — pairs closer than this get fanned apart
+_RING_DIVERGE_PUSH = 12.0        # px — tangential push applied to each of the pair
+
+
+def _fan_apart_ring_labels(ring_label_data: list[tuple]) -> list[tuple]:
+    """Push co-located ring edge labels apart along their tangents.
+
+    Each item is ``(anchor, (ux, uy), priority, text, ir_id)`` where ``(ux, uy)``
+    is the outward radial unit vector at the label's anchor. When two labels'
+    anchors fall within ``_RING_DIVERGE_THRESHOLD`` px, each is shifted by
+    ``_RING_DIVERGE_PUSH`` px along its own tangent (perpendicular to its
+    radial), in the direction that increases their separation, so the pair fans
+    apart instead of stacking. Order is preserved; a label is pushed at most
+    once (by its nearest close neighbour). Returns a new list.
+    """
+    n = len(ring_label_data)
+    if n < 2:
+        return ring_label_data
+
+    anchors = [item[0] for item in ring_label_data]
+    out = list(ring_label_data)
+    for i in range(n):
+        ax, ay = anchors[i]
+        # Find the nearest other label within the divergence threshold.
+        nearest_j = -1
+        nearest_d = _RING_DIVERGE_THRESHOLD
+        for j in range(n):
+            if j == i:
+                continue
+            d = math.hypot(anchors[j][0] - ax, anchors[j][1] - ay)
+            if d < nearest_d:
+                nearest_d = d
+                nearest_j = j
+        if nearest_j < 0:
+            continue
+        # Tangent = perpendicular to this label's radial unit vector.
+        ux, uy = ring_label_data[i][1]
+        tx, ty = -uy, ux
+        # Push along the tangent in whichever direction moves away from the
+        # neighbour (positive dot with the neighbour→self vector).
+        away_x, away_y = ax - anchors[nearest_j][0], ay - anchors[nearest_j][1]
+        sign = 1.0 if (tx * away_x + ty * away_y) >= 0 else -1.0
+        new_anchor = (ax + tx * _RING_DIVERGE_PUSH * sign,
+                      ay + ty * _RING_DIVERGE_PUSH * sign)
+        item = out[i]
+        out[i] = (new_anchor, item[1], item[2], item[3], item[4])
+    return out
 
 
 def pathway_label_requests(
@@ -1597,7 +1693,20 @@ def pathway_label_requests(
                 sum(p[1] for p in ent_pts) / len(ent_pts),
             )
 
-    requests: list[LabelRequest] = []
+    # Bug 5: entity-anchored labels (external rung-4 labels + sublabels) are
+    # collected separately from relation labels so they can be submitted to
+    # place_labels FIRST. A relation label can roam the whole canvas, but an
+    # external entity label has only one sensible home — beside its own box.
+    # Submitting it first lets it claim that slot before a relation label takes
+    # it (which is what made "Fluorescence-activated cell sorting" land on top
+    # of "load onto sorter" in stress3).
+    relation_requests: list[LabelRequest] = []
+    sublabel_requests: list[LabelRequest] = []
+    extlabel_requests: list[LabelRequest] = []
+    # Bug 6: ring edge labels are collected here (anchor, radial unit vector,
+    # priority, text, ir_id) and emitted after the loop so a divergence pass can
+    # fan apart any co-located pair before requests are built.
+    ring_label_data: list[tuple] = []
     for relation, arrow in zip(figure.relations, arrow_entries):
         text = relation.label
         if not text:
@@ -1609,11 +1718,14 @@ def pathway_label_requests(
         if ring_center is not None:
             # Radial outward direction from ring centre through the chord
             # midpoint; bias the label off the ring and try the outward
-            # side first.
+            # side first. Bug 6: nudge further out (was 14px) so edge labels
+            # clear their adjacent ring node instead of jamming against it
+            # (e.g. "SDH"/"SCS" beside "Succinate" at the bottom of the ring).
             rx, ry = midpoint[0] - ring_center[0], midpoint[1] - ring_center[1]
             norm = math.hypot(rx, ry) or 1.0
             ux, uy = rx / norm, ry / norm
-            anchor = (midpoint[0] + ux * 14.0, midpoint[1] + uy * 14.0)
+            anchor = (midpoint[0] + ux * _RING_RADIAL_NUDGE,
+                      midpoint[1] + uy * _RING_RADIAL_NUDGE)
             if abs(ux) >= abs(uy):
                 priority = (("right", "above", "below", "left", "center")
                             if ux > 0 else
@@ -1622,6 +1734,10 @@ def pathway_label_requests(
                 priority = (("below", "right", "left", "above", "center")
                             if uy > 0 else
                             ("above", "right", "left", "below", "center"))
+            ring_label_data.append(
+                (anchor, (ux, uy), priority, text, relation.ir_id)
+            )
+            continue
         else:
             # Place the label perpendicular to the arrow shaft so it doesn't
             # render directly on top of the line. For a mostly-horizontal arrow
@@ -1635,12 +1751,27 @@ def pathway_label_requests(
                 priority = ("right", "left", "above", "below", "center")
         # Anchor is a notional point on the arrow shaft; small bbox so
         # label_placement's gap dominates spacing.
-        requests.append(LabelRequest(
+        relation_requests.append(LabelRequest(
             text=text,
             anchor=anchor,
             anchor_size=(2.0, 2.0),
             priority=priority,
             ir_id=relation.ir_id,
+        ))
+
+    # Bug 6: ring edge labels were deferred above so co-located pairs can be
+    # fanned apart along the tangent before their requests are built. Two
+    # adjacent chords can share nearly the same radial angle (a tight ring),
+    # placing their outward-nudged anchors on top of each other; push each
+    # along its tangent away from the other so the labels diverge.
+    fanned = _fan_apart_ring_labels(ring_label_data)
+    for anchor, _radial, priority, text, ir_id in fanned:
+        relation_requests.append(LabelRequest(
+            text=text,
+            anchor=anchor,
+            anchor_size=(2.0, 2.0),
+            priority=priority,
+            ir_id=ir_id,
         ))
 
     # V2 / L5: entity sublabels — text anchored to entity bbox, placed below
@@ -1658,7 +1789,7 @@ def pathway_label_requests(
             continue
         cx, cy = entry.args[1]
         size = entry.kwargs.get("size", ENTITY_BBOX.get(entity.type, (60.0, 30.0)))
-        requests.append(LabelRequest(
+        sublabel_requests.append(LabelRequest(
             text=sublabel,
             anchor=(cx, cy),
             anchor_size=size,
@@ -1681,7 +1812,7 @@ def pathway_label_requests(
         fit = fit_label(entity.label, size[0], size[1], style)
         if not fit.external:
             continue
-        requests.append(LabelRequest(
+        extlabel_requests.append(LabelRequest(
             text=entity.label,
             anchor=(cx, cy),
             anchor_size=size,
@@ -1689,4 +1820,106 @@ def pathway_label_requests(
             ir_id=f"{entity.id}_extlabel",
         ))
 
-    return requests
+    # External entity labels first (claim their box-adjacent slot), then
+    # relation labels (free to roam), then sublabels.
+    return extlabel_requests + relation_requests + sublabel_requests
+
+
+# ---------------------------------------------------------------------------
+# Bug 5: leader lines for externalized (rung-4) entity labels.
+# A fit-aware entity whose label can't fit even at the font floor renders an
+# empty box; its label is re-placed outside the box by place_labels. Without a
+# connector, the floating text reads as unrelated to the box. After placement
+# we walk the entries, pair each placed `_extlabel` with its entity box, and
+# draw a thin dashed edge-to-edge connector.
+# ---------------------------------------------------------------------------
+
+_LEADER_DASH = "3,2"            # dash pattern for the external-label connector
+_LEADER_STROKE_WIDTH = 0.5      # px — deliberately hairline so it never competes
+
+
+def _leader_line(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    style_dict: dict | None = None,
+) -> svgwrite.container.Group:
+    """A hairline dashed connector from an external label to its entity box."""
+    s = {**proteins.DEFAULT_STYLE, **(style_dict or {})}
+    color = s.get("label_font_color", "#1A1A1A")
+    g = svgwrite.container.Group()
+    line = svgwrite.shapes.Line(start=start, end=end, stroke=color)
+    line["stroke-width"] = _LEADER_STROKE_WIDTH
+    line["stroke-dasharray"] = _LEADER_DASH
+    g.add(line)
+    return g
+
+
+def pathway_extlabel_leaders(
+    entries: list[LayoutEntry],
+    style_dict: dict | None = None,
+) -> list[LayoutEntry]:
+    """Insert a dashed leader line for every externalized entity label.
+
+    Operates on the post-`place_labels` entry list. Returns the entries with
+    leader-line LayoutEntry items inserted immediately before the first placed
+    label (so leaders draw over entity boxes but under label text). A no-op
+    (returns the input unchanged) when no `_extlabel` labels are present, so it
+    is safe to call for every archetype.
+
+    The split point — the index of the first label entry — equals the count of
+    pre-label entries, so a caller that slices ``result[:n]`` / ``result[n:]``
+    (e.g. the per-panel label path) keeps leaders grouped with the labels.
+    """
+    from imageGen.layout.label_placement import (  # noqa: PLC0415 — break cycle
+        _DEFAULT_LABEL_STYLE,
+        _estimate_text_bbox,
+        _label_primitive,
+    )
+
+    ent_prims = frozenset(PRIMITIVE_REGISTRY.values())
+    entity_geom: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {}
+    for e in entries:
+        if e.primitive in ent_prims and e.ir_id is not None and len(e.args) >= 2:
+            size = e.kwargs.get("size", (60.0, 30.0))
+            entity_geom[e.ir_id] = (e.args[1], size)
+
+    leaders: list[LayoutEntry] = []
+    first_label_idx = len(entries)
+    for i, e in enumerate(entries):
+        if e.primitive is not _label_primitive:
+            continue
+        first_label_idx = min(first_label_idx, i)
+        ir_id = e.ir_id or ""
+        if not (ir_id.startswith("label_") and ir_id.endswith("_extlabel")):
+            continue
+        entity_id = ir_id[len("label_"):-len("_extlabel")]
+        geom = entity_geom.get(entity_id)
+        if geom is None:
+            continue
+        box_center, box_size = geom
+        label_center = e.args[1]
+        text = e.args[0]
+        font_size = float(
+            (e.kwargs.get("style_dict") or _DEFAULT_LABEL_STYLE)["label_font_size"]
+        )
+        lw, lh = _estimate_text_bbox(str(text), font_size)
+        # Edge-to-edge: exit the label bbox toward the box, and the box bbox
+        # toward the label, so the connector touches both perimeters cleanly
+        # without crossing the text or the box fill.
+        label_exit = _bbox_exit_point(
+            label_center, lw / 2, lh / 2, box_center, 0.0
+        )
+        box_exit = _bbox_exit_point(
+            box_center, box_size[0] / 2, box_size[1] / 2, label_center, 0.0
+        )
+        leaders.append(LayoutEntry(
+            primitive=_leader_line,
+            args=(label_exit, box_exit),
+            kwargs={"style_dict": style_dict} if style_dict else {},
+            position=(0.0, 0.0),
+            ir_id=f"leader_{entity_id}",
+        ))
+
+    if not leaders:
+        return entries
+    return entries[:first_label_idx] + leaders + entries[first_label_idx:]
