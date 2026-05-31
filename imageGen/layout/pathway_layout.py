@@ -900,6 +900,7 @@ def _graph_positions(
 
 _RECEPTOR_LABEL_GAP = 6.0      # px — matches the hard-coded gap in receptor() primitive
 _RECEPTOR_FONT_SIZE = 11.0     # matches _DEFAULT_LABEL_STYLE in label_placement
+_HIT_TEST_MARGIN = 8.0         # px — expanded half-extent for arch hit-test (Bug 4)
 
 
 def _arrow_bbox_for_entity(
@@ -1086,7 +1087,18 @@ def _route_same_band_arrows(
                 continue
             ocx, ocy = positions[oid]
             ow, oh = effective_bbox[entity_by_id[oid].type]
-            if _segment_hits_rect(start, end, ocx, ocy, ow / 2, oh / 2):
+            # Bug 4: broaden the hit-test half-extents by _HIT_TEST_MARGIN so
+            # shafts that visually graze an entity bbox but miss it by a few px
+            # (due to vertical spread from the layered-DAG topo-y logic) still
+            # trigger an arch.  Also include the entity's label footprint: a
+            # shaft that passes through a long centered label arches even if it
+            # clears the body box.  The width estimate uses the same formula as
+            # label_placement._estimate_text_bbox so the two are consistent.
+            obs_label = entity_by_id[oid].label
+            obs_lw = max(1, len(obs_label)) * _RECEPTOR_FONT_SIZE * 0.6
+            hw = max(ow / 2, obs_lw / 2) + _HIT_TEST_MARGIN
+            hh = oh / 2 + _HIT_TEST_MARGIN
+            if _segment_hits_rect(start, end, ocx, ocy, hw, hh):
                 hit = True
                 break
 
